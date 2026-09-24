@@ -5,3 +5,4 @@ Significant design decisions are recorded here using a lightweight [Michael Nyga
 | ADR | Title | Status |
 |---|---|---|
 | [0001](0001-postgres-pgvector.md) | Use Postgres with pgvector as the single data store | Accepted |
+| [0002](0002-langgraph-orchestration.md) | Use LangGraph for agent orchestration | Accepted |
