@@ -6,7 +6,7 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 
 | Phase | Weeks | Theme | Status |
 |---|---|---|---|
-| [0](#phase-0--foundations) | 1 | Foundations | In progress |
+| [0](#phase-0--foundations) | 1 | Foundations | Complete |
 | [1](#phase-1--ingestion-and-corpus) | 2–3 | Ingestion and corpus | Planned |
 | [2](#phase-2--retrieval) | 3–4 | Retrieval | Planned |
 | [3](#phase-3--perception) | 5–6 | Perception | Planned |
@@ -26,18 +26,18 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 - CI runs lint and tests against a real pgvector database on every push.
 
 **Planned commits**
-- [ ] `chore: initialize repository`
-- [ ] `docs: add project README`
-- [ ] `docs: add phased delivery roadmap`
-- [ ] `docs(adr): adopt Postgres with pgvector as the single data store`
-- [ ] `docs(adr): adopt LangGraph for agent orchestration`
-- [ ] `docs(adr): verify matches deterministically before consulting an LLM`
-- [ ] `build: add Python project configuration`
-- [ ] `build: add local Postgres with pgvector via Docker Compose`
-- [ ] `feat(db): add initial recall corpus schema`
-- [ ] `feat(db): add ordered SQL migration runner`
-- [ ] `ci: run lint and tests against pgvector on every push`
-- [ ] `docs: add development setup and close out Phase 0`
+- [x] `chore: initialize repository`
+- [x] `docs: add project README`
+- [x] `docs: add phased delivery roadmap`
+- [x] `docs(adr): adopt Postgres with pgvector as the single data store`
+- [x] `docs(adr): adopt LangGraph for agent orchestration`
+- [x] `docs(adr): verify matches deterministically before consulting an LLM`
+- [x] `build: add Python project configuration`
+- [x] `build: add local Postgres with pgvector via Docker Compose`
+- [x] `feat(db): add initial recall corpus schema`
+- [x] `feat(db): add ordered SQL migration runner`
+- [x] `ci: run lint and tests against pgvector on every push`
+- [x] `docs: add development setup and close out Phase 0`
 
 ---
 

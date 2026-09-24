@@ -6,7 +6,7 @@
 
 RecallLens is a multimodal, multi-agent system that identifies a product from a photo (or a receipt, or a voice query), extracts the identifiers that actually determine recall status (UPC, model number, lot code, best-by date, VIN), searches recalls from every major US recall authority, verifies whether *this specific unit* falls inside the recalled range, and explains the hazard and remedy with citations. When it cannot be sure, it says so.
 
-> **Status:** Phase 0 (foundations). See [ROADMAP.md](ROADMAP.md) for the phased delivery plan.
+> **Status:** Phase 0 (foundations) complete; Phase 1 (ingestion) next. See [ROADMAP.md](ROADMAP.md) for the phased delivery plan.
 
 ---
 
@@ -109,6 +109,22 @@ Populated as phases complete. No numbers are reported before they are measured.
 | End-to-end false-negative rate | — | — |
 | p95 latency | — | — |
 | Cost per query | — | — |
+
+## Getting started
+
+**Prerequisites:** Python 3.12, [uv](https://docs.astral.sh/uv/), Docker.
+
+```bash
+git clone https://github.com/coder-raj369/recall-lens.git
+cd recall-lens
+cp .env.example .env
+docker compose up -d                          # Postgres 16 + pgvector
+uv sync                                       # install dependencies from uv.lock
+export $(grep -v '^#' .env | xargs)
+uv run python -m recall_lens.db.migrate       # apply schema migrations
+uv run pytest                                 # database tests run when DATABASE_URL is set
+uv run ruff check . && uv run ruff format --check .
+```
 
 ## Repository layout
 
