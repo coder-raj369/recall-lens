@@ -1,0 +1,152 @@
+[
+ {
+  "RecallID": 10992,
+  "RecallNumber": "26789",
+  "RecallDate": "2026-09-24T00:00:00",
+  "Description": "This recall involves 5Color-branded bicycle helmet and pads sets. The sets consist of a pink helmet, knee and elbow pads. Only the size small helmets are included in this recall. The helmets are size small (S), fitting a head circumference of about 18 to 22 inches, and have black padding, black straps, a black and a black fit-adjusting knob at the back. “2026/03/20” are included in this recall. “Model No.: YD-001,” “Lot/Ref: YD-260320” and “Date 2026/03/20” are printed on a label on the inside of the helmet and on the product packaging.",
+  "URL": "https://cpsc.gov/Recalls/2026/5Color-Recalls-Childrens-Bicycle-Helmet-and-Pads-Sets-Due-to-Risk-of-Serious-Injury-or-Death-from-Head-Injury-Violate-Mandatory-Standard-for-Bicycle-Helmets",
+  "Title": "5Color Recalls Children’s Bicycle Helmet and Pads Sets Due to Risk of Serious Injury or Death from Head Injury; Violate Mandatory Standard for Bicycle Helmets",
+  "ConsumerContact": "5Color toll free at 833-382-6461 from 9 a.m. to 2 p.m. CT Monday through Friday or email at FiveColorCS@163.com.",
+  "LastPublishDate": "2026-09-24T00:00:00",
+  "Products": [
+   {
+    "Name": "5Color Children’s Bike Helmet and Pads Sets",
+    "Description": "",
+    "Model": "",
+    "Type": "Helmets & Helmet Accessories",
+    "CategoryID": "1995",
+    "NumberOfUnits": "About 324"
+   }
+  ],
+  "Inconjunctions": [],
+  "Images": [
+   {
+    "URL": "https://cpsc.gov/s3fs-public/5Color1.jpg?VersionId=atSu6_Bv4DlP1J_K78WbQQJAQhdw9JUP",
+    "Caption": "Recalled 5Color Helmet and Pads Set"
+   },
+   {
+    "URL": "https://cpsc.gov/s3fs-public/5Color2.jpg?VersionId=ZWuv6bs5xXdfyiOT.9yKdKcrqGdi12a0",
+    "Caption": "“Model No.: YD-001,” “Lot/Ref: YD-260320” and “Date 2026/03/20” are printed on a label inside of the Recalled 5Color helmet and on the set’s packaging."
+   }
+  ],
+  "Injuries": [
+   {
+    "Name": "None reported"
+   }
+  ],
+  "Manufacturers": [],
+  "Retailers": [
+   {
+    "Name": "Sold Online At:\nAmazon.com in May 2026 for between $25 and $26.",
+    "CompanyID": ""
+   }
+  ],
+  "Importers": [],
+  "Distributors": [],
+  "SoldAtLabel": null,
+  "ManufacturerCountries": [
+   {
+    "Country": "China"
+   }
+  ],
+  "ProductUPCs": [],
+  "Hazards": [
+   {
+    "Name": "The helmets in the recalled sets violate the mandatory safety standard for bicycle helmets because the helmets do not comply with the impact attenuation, retention system, positional stability, labeling and certification requirements. The helmets can fail to protect the user in the event of a crash, posing a serious risk of injury or death due to head injury.",
+    "HazardType": "",
+    "HazardTypeID": ""
+   }
+  ],
+  "Remedies": [
+   {
+    "Name": "Consumers should stop using the helmets immediately and contact 5Color for a full refund of the set. Consumers will be asked to destroy the recalled helmet by cutting the straps and email a photo of the destroyed helmet to FiveColorCS@163.com. Consumers should then dispose of the recalled helmet. Consumers may keep the protection pads."
+   }
+  ],
+  "RemedyOptions": [
+   {
+    "Option": "Refund"
+   }
+  ]
+ },
+ {
+  "RecallID": 10080,
+  "RecallNumber": "25030",
+  "RecallDate": "2024-11-07T00:00:00",
+  "Description": "This recall involves Dreamgro lullaby travel soothers for infants. They are shaped as a mermaid, have a soft gold star attached to the mermaid's head, and were sold in light blue and pink colors. The soothers play music and have a detachable hook that attaches to car seats and strollers. The Dreamgro name and model numbers are located on the soother's tag. Product and Color Model Number UPC Code Light Blue Mermaid DF156-MT 196710005616 Pink Mermaid DF156-LI 196710008709",
+  "URL": "https://www.cpsc.gov/Recalls/2025/Dreamgro-Recalls-Lullaby-Travel-Soothers-Due-to-Choking-Hazard",
+  "Title": "Dreamgro Recalls Lullaby Travel Soothers Due to Choking Hazard",
+  "ConsumerContact": "Dreamgro toll-free at 888-202-0442 from 9 a.m. to 3 p.m. ET, Monday through Friday, email Recall@dreamgro.com, or at www.dreamgro.com/recall.html or www.dreamgro.com and then click on \"Product Recall\" or contact the store where the product was purchased.",
+  "LastPublishDate": "2024-11-07T00:00:00",
+  "Products": [
+   {
+    "Name": "Dreamgro Lullaby mermaid travel soothers",
+    "Description": "",
+    "Model": "",
+    "Type": "",
+    "CategoryID": "",
+    "NumberOfUnits": "About 25,900"
+   }
+  ],
+  "Inconjunctions": [],
+  "Images": [
+   {
+    "URL": "https://www.cpsc.gov/s3fs-public/Dreamgro-1.png",
+    "Caption": "Recalled Dreamgro Lullaby Travel Soothers (blue)"
+   },
+   {
+    "URL": "https://www.cpsc.gov/s3fs-public/Dreamgro-2.png",
+    "Caption": "Recalled Dreamgro Lullaby Travel Soothers (pink)"
+   }
+  ],
+  "Injuries": [
+   {
+    "Name": "The firm has received one report of the soft star detaching from the toy. No injuries have been reported."
+   }
+  ],
+  "Manufacturers": [],
+  "Retailers": [
+   {
+    "Name": "Beall's Outlet Stores, Burlington Merchandising, DD'S Discounts, Macy's Backstage, Marshalls, Nordstrom Rack, and TJ Maxx stores nationwide from January 2024 through May 2024 for between $6 and $9.",
+    "CompanyID": ""
+   }
+  ],
+  "Importers": [
+   {
+    "Name": "DreamGro Enterprises LLC, of New York",
+    "CompanyID": ""
+   }
+  ],
+  "Distributors": [],
+  "SoldAtLabel": null,
+  "ManufacturerCountries": [
+   {
+    "Country": "China"
+   }
+  ],
+  "ProductUPCs": [
+   {
+    "UPC": "196710005616"
+   },
+   {
+    "UPC": "196710008709"
+   }
+  ],
+  "Hazards": [
+   {
+    "Name": "The recalled toy's gold-colored soft star can detach, posing a choking hazard to young children.",
+    "HazardType": "",
+    "HazardTypeID": ""
+   }
+  ],
+  "Remedies": [
+   {
+    "Name": "Consumers should immediately stop using the recalled soothers and take them away from children. Return the soother to the store where purchased for a full refund."
+   }
+  ],
+  "RemedyOptions": [
+   {
+    "Option": "Refund"
+   }
+  ]
+ }
+]
