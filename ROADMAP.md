@@ -7,7 +7,7 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 | Phase | Weeks | Theme | Status |
 |---|---|---|---|
 | [0](#phase-0--foundations) | 1 | Foundations | Complete |
-| [1](#phase-1--ingestion-and-corpus) | 2–3 | Ingestion and corpus | Planned |
+| [1](#phase-1--ingestion-and-corpus) | 2–3 | Ingestion and corpus | Complete |
 | [2](#phase-2--retrieval) | 3–4 | Retrieval | Planned |
 | [3](#phase-3--perception) | 5–6 | Perception | Planned |
 | [4](#phase-4--multi-agent-orchestration) | 7–8 | Multi-agent orchestration | Planned |
@@ -43,7 +43,7 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 
 ## Phase 1 — Ingestion and corpus
 
-**Goal:** one normalized, continuously updated recall corpus from all four agencies, with typed identifiers extracted.
+**Goal:** one normalized, continuously updated recall corpus across US recall agencies, with typed identifiers extracted.
 
 **Exit criteria**
 - Recalls from CPSC, FDA (food, drug, device) and NHTSA are loaded. USDA FSIS is deferred ([ADR-0004](docs/adr/0004-defer-fsis-ingestion.md)).
@@ -51,18 +51,18 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 - Identifier extraction F1 is measured on hand-labeled recalls (100 dev, 60 held-out test).
 
 **Planned commits**
-- [ ] `feat(ingest): define normalized recall model and content hashing`
-- [ ] `feat(ingest): add HTTP client with retries, backoff and per-agency rate limits`
-- [ ] `feat(ingest): add CPSC SaferProducts connector`
-- [ ] `feat(ingest): add openFDA enforcement connector for food, drugs and devices`
-- [ ] `docs(adr): defer USDA FSIS ingestion until API access is available`
-- [ ] `feat(ingest): add NHTSA connector using bulk recall files`
-- [ ] `feat(db): track ingestion runs and upsert recalls idempotently`
-- [ ] `feat(extract): extract UPC, model, lot and VIN identifiers with GLiNER and rules`
-- [ ] `feat(ingest): chunk and embed recalls with bge-m3`
-- [ ] `feat(ingest): add sync CLI and nightly scheduled ingestion`
-- [ ] `feat(evals): add labeled extraction splits and field-level F1 harness`
-- [ ] `docs: publish Phase 1 corpus statistics and extraction results`
+- [x] `feat(ingest): define normalized recall model and content hashing`
+- [x] `feat(ingest): add HTTP client with retries, backoff and per-host rate limits`
+- [x] `feat(ingest): add CPSC SaferProducts connector`
+- [x] `feat(ingest): add openFDA enforcement connector for food, drugs and devices`
+- [x] `docs(adr): defer USDA FSIS ingestion until API access is available`
+- [x] `feat(ingest): add NHTSA connector using bulk recall files`
+- [x] `feat(db): track ingestion runs and upsert recalls idempotently`
+- [x] `feat(extract): extract UPC, model, lot and NDC identifiers with rules and GLiNER`
+- [x] `feat(ingest): chunk and embed recalls with bge-m3`
+- [x] `feat(ingest): add sync CLI and nightly scheduled ingestion`
+- [x] `feat(evals): add labeled extraction splits and field-level F1 harness`
+- [x] `docs: publish Phase 1 corpus statistics and extraction results`
 
 ---
 

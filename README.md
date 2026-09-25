@@ -6,7 +6,7 @@
 
 RecallLens is a multimodal, multi-agent system that identifies a product from a photo (or a receipt, or a voice query), extracts the identifiers that actually determine recall status (UPC, model number, lot code, best-by date, VIN), searches recalls from every major US recall authority, verifies whether *this specific unit* falls inside the recalled range, and explains the hazard and remedy with citations. When it cannot be sure, it says so.
 
-> **Status:** Phase 0 (foundations) complete; Phase 1 (ingestion) next. See [ROADMAP.md](ROADMAP.md) for the phased delivery plan.
+> **Status:** Phases 0–1 complete (foundations; ingestion and corpus). Phase 2 (retrieval) next. See [ROADMAP.md](ROADMAP.md) for the phased delivery plan.
 
 ---
 
@@ -91,7 +91,7 @@ Evaluation is built alongside each capability, not after it.
 
 | Stage | Dataset | Metrics |
 |---|---|---|
-| Identifier extraction | 100 hand-labeled recalls | Field-level precision, recall, F1 |
+| Identifier extraction | 160 hand-labeled recalls (100 dev, 60 held-out test) | Field-level precision, recall, F1 |
 | Retrieval | 150 text queries → recall IDs | Recall@k, MRR; dense vs hybrid vs hybrid + rerank |
 | Perception | 100+ labeled product photos | Field accuracy; crop vs no-crop |
 | End to end | 300 cases incl. hard negatives (same product, different lot) | **False-negative rate**, precision, abstention rate, faithfulness |
@@ -102,6 +102,34 @@ The LLM judge is calibrated against human labels (Cohen's κ reported), and CI b
 ### Results
 
 Populated as phases complete. No numbers are reported before they are measured.
+
+#### Phase 1: corpus and identifier extraction
+
+**Corpus.** A backfill of everything published from 2024-01-01 to 2026-09-25, run on an Apple-silicon laptop:
+
+| Agency | Recalls | Breakdown | Sync time* |
+|---|---|---|---|
+| CPSC | 1,184 | consumer products | 10.4 min |
+| FDA | 14,420 | 8,410 devices · 3,985 food · 2,025 drugs | 90.6 min |
+| NHTSA | 2,724 | 2,425 vehicles · 246 equipment · 37 tires · 16 child seats | 6.9 min |
+| **Total** | **18,328** | 26,537 embedded chunks (1.45 per recall) | ~1.5 h embedding |
+
+\*Fetch, extraction (including GLiNER) and upsert. An immediate re-run of a 4,785-recall sync reported every recall unchanged, and the nightly workflow verifies all three connectors against the live APIs. USDA FSIS is deferred ([ADR-0004](docs/adr/0004-defer-fsis-ingestion.md)).
+
+**Identifier extraction**, held-out test split (60 recalls, 289 gold identifiers). Codes must match exactly, and brands match leniently ([guidelines](evals/datasets/README.md)):
+
+| Kind | Rules only | GLiNER only | Rules + GLiNER (all kinds) | **Production**: rules for codes, GLiNER for brands |
+|---|---|---|---|---|
+| Brand | — | 0.74 / 0.81 / 0.78 | 0.74 / 0.81 / 0.78 | **0.74 / 0.81 / 0.77** |
+| Model | 0.91 / 0.28 / 0.43 | 0.46 / 0.37 / 0.41 | 0.50 / 0.46 / 0.48 | **0.91 / 0.28 / 0.43** |
+| Lot / serial | 0.92 / 0.75 / 0.82 | 0.57 / 0.16 / 0.25 | 0.81 / 0.79 / 0.80 | **0.92 / 0.75 / 0.82** |
+| UPC / GTIN | 1.00 / 0.50 / 0.67 | 0.64 / 0.35 / 0.45 | 0.74 / 0.54 / 0.62 | **1.00 / 0.50 / 0.67** |
+| NDC | 1.00 / 1.00 / 1.00 | — | 1.00 / 1.00 / 1.00 | **1.00 / 1.00 / 1.00** |
+| **All (micro)** | 0.93 / 0.41 / 0.57 | 0.62 / 0.40 / 0.49 | 0.72 / 0.70 / 0.71 | **0.85 / 0.63 / 0.73** |
+
+Values are precision / recall / F1. The production configuration was chosen on the dev split, where letting GLiNER add codes lowered code F1 from 0.59 to 0.55. Keeping codes rule-based holds their precision at 0.93 by design: a wrong lot or model number is worse than a missing one, because the verifier can ask for a clearer photo when a code is missing but cannot detect a confidently wrong one. The main gaps are unlabeled model names and bare UPC digits, which Phase 3's label reading targets.
+
+#### Later phases
 
 | Metric | Baseline | Current |
 |---|---|---|
@@ -126,18 +154,33 @@ uv run pytest                                 # database tests run when DATABASE
 uv run ruff check . && uv run ruff format --check .
 ```
 
+Ingest recalls and evaluate extraction:
+
+```bash
+uv sync --group ml                                        # GLiNER and bge-m3 (optional, ~3 GB of weights)
+uv run python -m recall_lens.ingest --since 2026-01-01    # sync all agencies, then embed
+uv run python -m recall_lens.ingest --no-model --no-embed # rules only, no ML dependencies
+uv run python -m recall_lens.evals.extraction --split test
+```
+
+Without `--since`, ingestion is incremental: each agency restarts from its last successful run minus a 30-day overlap.
+
 ## Repository layout
 
 ```
 recall-lens/
-├── docs/adr/            Architecture decision records
-├── src/recall_lens/     Application package
-│   └── db/              Schema migrations and runner
-├── tests/               Test suite
-└── .github/workflows/   Continuous integration
+├── docs/adr/              Architecture decision records
+├── evals/datasets/        Labeled evaluation sets and labeling guidelines
+├── src/recall_lens/
+│   ├── db/                Schema migrations and runner
+│   ├── ingest/            Agency connectors, idempotent store, embedding, sync CLI
+│   ├── extract/           Rule-based and GLiNER identifier extraction
+│   └── evals/             Evaluation harnesses
+├── tests/                 Test suite (real recall records as fixtures)
+└── .github/workflows/     CI and nightly ingestion
 ```
 
-Modules for ingestion, extraction, retrieval, perception, agents, API, evaluation and the web client are added in the phase that introduces them; see [ROADMAP.md](ROADMAP.md).
+Modules for retrieval, perception, agents, the API and the web client are added in the phase that introduces them; see [ROADMAP.md](ROADMAP.md).
 
 ## Disclaimer
 
