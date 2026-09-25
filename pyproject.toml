@@ -18,6 +18,7 @@ ml = [
     "gliner>=0.2.16",
     "protobuf>=5",  # required to load the DeBERTa tokenizer GLiNER builds on
     "sentencepiece>=0.2",
+    "sentence-transformers>=3.0",
 ]
 
 [build-system]
