@@ -1,0 +1,142 @@
+{
+ "food": {
+  "status": "Ongoing",
+  "city": "Totowa",
+  "state": "NJ",
+  "country": "United States",
+  "classification": "Class I",
+  "openfda": {},
+  "product_type": "Food",
+  "event_id": "99684",
+  "recalling_firm": "EURO FOODS GROUP USA NJ INC",
+  "address_1": "20 W End Rd",
+  "address_2": "",
+  "postal_code": "07512-1406",
+  "voluntary_mandated": "Voluntary: Firm initiated",
+  "initial_firm_notification": "E-Mail",
+  "distribution_pattern": "The adulterated product was distributed to the following states: VA, NY, NJ, MI",
+  "recall_number": "H-1331-2026",
+  "product_description": "Crown Farms Dried Suri Cut, 200 gm, in plastic pack, 25 packages per box, keep frozen",
+  "product_quantity": "53 boxes",
+  "reason_for_recall": "The firm imported and distributed dried ribbon fish that was not properly eviscerated prior to drying.",
+  "recall_initiation_date": "20260801",
+  "center_classification_date": "20260904",
+  "report_date": "20260916",
+  "code_info": "BATCH NO: 130 EF, 146 EF SERIAL NUMBER: 5055192640140 PRODUCT CODE: 28DSUM",
+  "more_code_info": ""
+ },
+ "drug": {
+  "status": "Ongoing",
+  "city": "Bengaluru",
+  "state": "N/A",
+  "country": "India",
+  "classification": "Class II",
+  "openfda": {
+   "application_number": [
+    "ANDA209101"
+   ],
+   "brand_name": [
+    "HALOPERIDOL DECANOATE"
+   ],
+   "generic_name": [
+    "HALOPERIDOL DECANOATE"
+   ],
+   "manufacturer_name": [
+    "BluePoint Laboratories"
+   ],
+   "product_ndc": [
+    "68001-578",
+    "68001-579",
+    "68001-580",
+    "68001-581",
+    "68001-582"
+   ],
+   "product_type": [
+    "HUMAN PRESCRIPTION DRUG"
+   ],
+   "route": [
+    "INTRAMUSCULAR"
+   ],
+   "substance_name": [
+    "HALOPERIDOL DECANOATE"
+   ],
+   "rxcui": [
+    "859871",
+    "1719803",
+    "1719862"
+   ],
+   "spl_id": [
+    "048557ea-f859-f0f2-e063-6294a90af5ab"
+   ],
+   "spl_set_id": [
+    "f2d14406-2ad4-4c5b-9c24-a026f27b415d"
+   ],
+   "package_ndc": [
+    "68001-579-59",
+    "68001-579-48",
+    "68001-580-41",
+    "68001-581-41",
+    "68001-581-48",
+    "68001-581-82",
+    "68001-578-59",
+    "68001-578-48",
+    "68001-582-41"
+   ],
+   "is_original_packager": [
+    true
+   ],
+   "upc": [
+    "0368001578592",
+    "0368001581417",
+    "0368001579599",
+    "0368001582414"
+   ],
+   "unii": [
+    "AC20PJ4101"
+   ]
+  },
+  "product_type": "Drugs",
+  "event_id": "96569",
+  "recalling_firm": "Somerset Therapeutics Private Limited",
+  "address_1": "54/1 Budihal Village",
+  "address_2": "N/A",
+  "postal_code": "N/A",
+  "voluntary_mandated": "Voluntary: Firm initiated",
+  "initial_firm_notification": "Letter",
+  "distribution_pattern": "U.S. Nationwide",
+  "recall_number": "D-0356-2025",
+  "product_description": "Haloperidol Decanoate Injection 50mg/mL, 1mL Single-Dose Vial, Rx Only, Manufactured by: Somerset Therapeutics Limited, Kamataka India, Manufactured for: BluePoint Laboratories NDC 68001-580-41",
+  "product_quantity": "4956 vials",
+  "reason_for_recall": "Lack of Assurance of Sterility: Media fill with bacterial contamination",
+  "recall_initiation_date": "20250321",
+  "center_classification_date": "20250408",
+  "report_date": "20250416",
+  "code_info": "A240467B, exp. date 07/2026"
+ },
+ "device": {
+  "status": "Ongoing",
+  "city": "Lewisberry",
+  "state": "PA",
+  "country": "United States",
+  "classification": "Class II",
+  "openfda": {},
+  "product_type": "Devices",
+  "event_id": "99573",
+  "recalling_firm": "Nipro Renal Soultions USA, Corporation",
+  "address_1": "509 Fishing Creek Rd",
+  "address_2": "",
+  "postal_code": "17339-9517",
+  "voluntary_mandated": "Voluntary: Firm initiated",
+  "initial_firm_notification": "Letter",
+  "distribution_pattern": "Worldwide - US Nationwide distribution in the states of FL, GA, IL, MD, MI, NC, NJ, NV, OH, PA, and the countries of Guatemala and Panama.",
+  "recall_number": "Z-3133-2026",
+  "product_description": "MedicaLyte Liquid Bicarbonate Concentrate    REF: BC-100 and BC+201",
+  "product_quantity": "3,286 cases",
+  "reason_for_recall": "Hemodialysis concentrates contain high endotoxin levels",
+  "recall_initiation_date": "20260805",
+  "center_classification_date": "20260910",
+  "report_date": "20260916",
+  "code_info": "BC-100 - Lot:N4L022 (exp.11/13/2026), N4L037(exp.11/18/2026) BC+201- Lot: N4L010(exp.11/06/2026)",
+  "more_code_info": ""
+ }
+}

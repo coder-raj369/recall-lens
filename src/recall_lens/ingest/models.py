@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date
 
 AGENCIES = frozenset({"cpsc", "fda", "fsis", "nhtsa"})
-IDENTIFIER_KINDS = frozenset({"upc", "model", "lot", "vin", "brand", "year"})
+IDENTIFIER_KINDS = frozenset({"upc", "ndc", "model", "lot", "vin", "brand", "year"})
 
 Identifier = tuple[str, str]
 
