@@ -13,6 +13,12 @@ dev = [
     "pytest>=8.3",
     "ruff>=0.6",
 ]
+# Model-based extraction and embeddings. Optional so CI and the API stay lightweight.
+ml = [
+    "gliner>=0.2.16",
+    "protobuf>=5",  # required to load the DeBERTa tokenizer GLiNER builds on
+    "sentencepiece>=0.2",
+]
 
 [build-system]
 requires = ["hatchling"]
