@@ -7,3 +7,4 @@ Significant design decisions are recorded here using a lightweight [Michael Nyga
 | [0001](0001-postgres-pgvector.md) | Use Postgres with pgvector as the single data store | Accepted |
 | [0002](0002-langgraph-orchestration.md) | Use LangGraph for agent orchestration | Accepted |
 | [0003](0003-deterministic-verification.md) | Verify matches deterministically before consulting an LLM | Accepted |
+| [0004](0004-defer-fsis-ingestion.md) | Defer USDA FSIS ingestion until API access is available | Accepted |

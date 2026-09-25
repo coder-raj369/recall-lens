@@ -46,7 +46,7 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 **Goal:** one normalized, continuously updated recall corpus from all four agencies, with typed identifiers extracted.
 
 **Exit criteria**
-- Recalls from CPSC, FDA (food, drug, device), USDA FSIS and NHTSA are loaded.
+- Recalls from CPSC, FDA (food, drug, device) and NHTSA are loaded. USDA FSIS is deferred ([ADR-0004](docs/adr/0004-defer-fsis-ingestion.md)).
 - Nightly incremental sync is idempotent: re-running it changes nothing.
 - Identifier extraction F1 is measured on 100 hand-labeled recalls.
 
@@ -55,7 +55,7 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 - [ ] `feat(ingest): add HTTP client with retries, backoff and per-agency rate limits`
 - [ ] `feat(ingest): add CPSC SaferProducts connector`
 - [ ] `feat(ingest): add openFDA enforcement connector for food, drugs and devices`
-- [ ] `feat(ingest): add USDA FSIS connector`
+- [ ] `docs(adr): defer USDA FSIS ingestion until API access is available`
 - [ ] `feat(ingest): add NHTSA connector using bulk recall files`
 - [ ] `feat(db): track ingestion runs and upsert recalls idempotently`
 - [ ] `feat(extract): extract UPC, model, lot and VIN identifiers with GLiNER and rules`
