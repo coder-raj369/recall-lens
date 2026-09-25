@@ -15,6 +15,7 @@ LABELS = {
     "lot number": "lot",
     "UPC barcode number": "upc",
 }
+BRAND_ONLY = frozenset({"brand"})
 THRESHOLD = 0.5
 # ponytail: one pass over the opening text (GLiNER reads ~384 words); identifiers named later
 # in very long reports are left to the rules. Window the text if recall suffers.
@@ -40,8 +41,12 @@ def _clean(kind: str, text: str) -> Identifier | None:
     return identifier(kind, text)
 
 
-def extract(text: str | None, threshold: float = THRESHOLD) -> set[Identifier]:
-    if not text:
+def extract(
+    text: str | None, kinds: frozenset[str] | None = None, threshold: float = THRESHOLD
+) -> set[Identifier]:
+    """Extract identifiers of the given kinds (default: all supported kinds)."""
+    labels = [label for label, kind in LABELS.items() if kinds is None or kind in kinds]
+    if not text or not labels:
         return set()
-    entities = _model().predict_entities(text[:MAX_CHARS], list(LABELS), threshold=threshold)
+    entities = _model().predict_entities(text[:MAX_CHARS], labels, threshold=threshold)
     return {ident for e in entities if (ident := _clean(LABELS[e["label"]], e["text"]))}

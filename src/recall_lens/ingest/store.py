@@ -53,6 +53,8 @@ def upsert(conn: psycopg.Connection, recall: Recall) -> Outcome:
         recall_id, inserted = row
         if not inserted:
             # Content changed: identifiers are replaced and stale chunks dropped for re-embedding.
+            # ponytail: an extractor change alone also triggers re-embedding; compare chunk text
+            # before deleting if full-corpus re-extraction becomes routine.
             conn.execute("DELETE FROM recall_identifiers WHERE recall_id = %s", (recall_id,))
             conn.execute("DELETE FROM recall_chunks WHERE recall_id = %s", (recall_id,))
         with conn.cursor() as cur:

@@ -14,7 +14,7 @@ MAX_PER_KIND = 1_000
 
 _NUMBER_SUFFIX = r"(?:\s*(?:#|no\.?|nos\.?|numbers?|codes?))?"
 _LABELS = {
-    "lot": rf"lots?{_NUMBER_SUFFIX}|batch(?:es)?{_NUMBER_SUFFIX}",
+    "lot": rf"lots?{_NUMBER_SUFFIX}|batch(?:es)?{_NUMBER_SUFFIX}|serial{_NUMBER_SUFFIX}",
     "model": (
         rf"models?{_NUMBER_SUFFIX}|ref\.?{_NUMBER_SUFFIX}|cat(?:alog)?\.?\s*(?:#|no\.?|numbers?)"
         r"|(?:part|material|item)\s*(?:#|no\.?|numbers?)"
@@ -25,7 +25,16 @@ _LABEL_RE = re.compile(
     r"\b(?:" + "|".join(f"(?P<{kind}>{pattern})" for kind, pattern in _LABELS.items()) + r")",
     re.IGNORECASE,
 )
-_SEPARATOR = re.compile(r"(?:[,;:&/()]|\band\b|\bor\b|\bthrough\b|\bthru\b|\bto\b|\s)+", re.I)
+_SEPARATOR = re.compile(r"(?:[,;:&/()\-]|\band\b|\bor\b|\bthrough\b|\bthru\b|\bto\b|\s)+", re.I)
+# Expiry dates and "a)" list markers interrupt code lists ("Lot #: 82886, exp 09/30/2026; 89646").
+_SKIPPABLE = re.compile(
+    r"(?:(?:exp(?:iry|ires|iration)?|bud|use\s+by|best\s+by)\.?(?:\s*date)?\s*[:.]?\s*"
+    r"(?:\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{1,2}[/.-]\d{4}|\d{4}[/.-]\d{1,2}(?:[/.-]\d{1,2})?"
+    r"|[A-Z]{3}\s+\d{4}|\d{4}-[A-Z]{3})(?![\dA-Z])"
+    r"|\b[a-z]\))",
+    re.IGNORECASE,
+)
+_NUMERIC_RANGE = re.compile(r"^(\d+)-(\d+)$")
 _CODE = re.compile(r"[A-Z0-9][A-Z0-9+\-._]*[A-Z0-9]|[0-9]", re.IGNORECASE)
 _DIGIT_RUN = re.compile(r"\d[\d -]{6,18}\d")
 _NDC = re.compile(r"(?<![\w-])\d{4,5}-\d{3,4}-\d{1,2}(?![\w-])")
@@ -38,7 +47,7 @@ def _codes_after(text: str, start: int) -> list[str]:
     """Collect code-like tokens following a label, stopping at the first ordinary word."""
     codes, pos = [], start
     while pos < len(text):
-        if sep := _SEPARATOR.match(text, pos):
+        if sep := _SEPARATOR.match(text, pos) or _SKIPPABLE.match(text, pos):
             pos = sep.end()
             continue
         token = _CODE.match(text, pos)
@@ -47,7 +56,10 @@ def _codes_after(text: str, start: int) -> list[str]:
         value = token.group()
         if not any(c.isdigit() for c in value) or _DATE_LIKE.match(value):
             break
-        codes.append(value)
+        if (bounds := _NUMERIC_RANGE.match(value)) and len(bounds[1]) == len(bounds[2]):
+            codes.extend(bounds.groups())  # "335314-335315" is a range, not one code
+        else:
+            codes.append(value)
         pos = token.end()
     return codes
 

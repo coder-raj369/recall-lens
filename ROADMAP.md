@@ -48,7 +48,7 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 **Exit criteria**
 - Recalls from CPSC, FDA (food, drug, device) and NHTSA are loaded. USDA FSIS is deferred ([ADR-0004](docs/adr/0004-defer-fsis-ingestion.md)).
 - Nightly incremental sync is idempotent: re-running it changes nothing.
-- Identifier extraction F1 is measured on 100 hand-labeled recalls.
+- Identifier extraction F1 is measured on hand-labeled recalls (100 dev, 60 held-out test).
 
 **Planned commits**
 - [ ] `feat(ingest): define normalized recall model and content hashing`
@@ -61,7 +61,7 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 - [ ] `feat(extract): extract UPC, model, lot and VIN identifiers with GLiNER and rules`
 - [ ] `feat(ingest): chunk and embed recalls with bge-m3`
 - [ ] `feat(ingest): add sync CLI and nightly scheduled ingestion`
-- [ ] `test(extract): add labeled extraction set and field-level F1 report`
+- [ ] `feat(evals): add labeled extraction splits and field-level F1 harness`
 - [ ] `docs: publish Phase 1 corpus statistics and extraction results`
 
 ---
