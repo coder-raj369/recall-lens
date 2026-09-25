@@ -1,0 +1,92 @@
+name: Nightly ingestion
+
+on:
+  schedule:
+    - cron: "17 6 * * *" # 06:17 UTC daily
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "Backfill start date (YYYY-MM-DD). Leave empty for an incremental run."
+        required: false
+
+concurrency:
+  group: ingestion
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    # Used only when no hosted database is configured (see "Select mode").
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: recall
+          POSTGRES_PASSWORD: recall
+          POSTGRES_DB: recall_lens
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U recall -d recall_lens"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://recall:recall@localhost:5432/recall_lens' }}
+      HOSTED: ${{ secrets.DATABASE_URL != '' }}
+      SINCE: ${{ inputs.since }}
+      HF_HOME: ${{ github.workspace }}/.hf
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Select mode
+        run: |
+          if [ "$HOSTED" = "true" ]; then
+            # Production: full pipeline into the hosted database.
+            echo "SYNC_ARGS=${SINCE:+--since $SINCE}" >> "$GITHUB_ENV"
+            echo "UV_GROUPS=--group ml" >> "$GITHUB_ENV"
+          else
+            # No hosted database yet: verify the pipeline end to end against the live agency
+            # APIs in an ephemeral database, without the ML models.
+            echo "SYNC_ARGS=--since $(date -u -d '-30 days' +%F) --no-model --no-embed" >> "$GITHUB_ENV"
+            echo "UV_GROUPS=" >> "$GITHUB_ENV"
+          fi
+
+      - name: Cache models
+        if: env.HOSTED == 'true'
+        uses: actions/cache@v4
+        with:
+          path: .hf
+          key: hf-gliner-medium-v2.1-bge-m3
+
+      - name: Install dependencies
+        run: uv sync --locked $UV_GROUPS
+
+      - name: Apply migrations
+        run: uv run python -m recall_lens.db.migrate
+
+      - name: Sync recalls
+        run: uv run python -m recall_lens.ingest $SYNC_ARGS
+
+      - name: Corpus summary
+        if: always()
+        run: |
+          uv run python - >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import os, psycopg
+          with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+              print("### Latest ingestion runs\n\n| Agency | Window | Status | Fetched | Inserted | Updated | Unchanged |")
+              print("|---|---|---|---|---|---|---|")
+              for row in conn.execute(
+                  "SELECT DISTINCT ON (agency) agency, since || ' to ' || until, status,"
+                  " fetched, inserted, updated, unchanged FROM ingestion_runs"
+                  " ORDER BY agency, started_at DESC"
+              ):
+                  print("| " + " | ".join(map(str, row)) + " |")
+              total = conn.execute("SELECT count(*) FROM recalls").fetchone()[0]
+              print(f"\nRecalls in database: **{total}**")
+          PY

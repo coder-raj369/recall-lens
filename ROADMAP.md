@@ -60,7 +60,7 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 - [ ] `feat(db): track ingestion runs and upsert recalls idempotently`
 - [ ] `feat(extract): extract UPC, model, lot and VIN identifiers with GLiNER and rules`
 - [ ] `feat(ingest): chunk and embed recalls with bge-m3`
-- [ ] `feat(ingest): schedule nightly incremental sync with Prefect`
+- [ ] `feat(ingest): add sync CLI and nightly scheduled ingestion`
 - [ ] `test(extract): add labeled extraction set and field-level F1 report`
 - [ ] `docs: publish Phase 1 corpus statistics and extraction results`
 

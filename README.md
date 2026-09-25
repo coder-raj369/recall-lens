@@ -78,7 +78,7 @@ flowchart TD
 | Language and tooling | Python 3.12, uv, Ruff, pytest |
 | Orchestration | LangGraph ([ADR-0002](docs/adr/0002-langgraph-orchestration.md)) |
 | Data | PostgreSQL 16 + pgvector, Redis (semantic cache) |
-| Ingestion | Prefect |
+| Ingestion | Scheduled GitHub Actions workflow ([ADR-0005](docs/adr/0005-scheduled-ingestion-github-actions.md)) |
 | Serving | FastAPI (SSE); vLLM on Modal for GPU models |
 | Frontend | Next.js PWA |
 | Evaluation | Custom harness, Ragas metrics, calibrated LLM-as-judge |
