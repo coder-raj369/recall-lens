@@ -32,20 +32,24 @@ class Hit:
 
 def dense(conn: psycopg.Connection, query_vector: Sequence[float], limit: int = 50) -> list[int]:
     """Nearest recalls by cosine distance of their closest chunk."""
-    rows = conn.execute(
-        """
-        SELECT recall_id FROM (
-            SELECT recall_id, embedding <=> %(q)s::vector AS distance
-            FROM recall_chunks
-            ORDER BY distance
-            LIMIT %(chunks)s
-        ) nearest
-        GROUP BY recall_id
-        ORDER BY min(distance)
-        LIMIT %(limit)s
-        """,
-        {"q": vector_literal(query_vector), "chunks": limit * _CHUNKS_PER_RECALL, "limit": limit},
-    ).fetchall()
+    chunks = limit * _CHUNKS_PER_RECALL
+    with conn.transaction():
+        # An HNSW scan returns at most ef_search rows (default 40), silently truncating LIMIT.
+        conn.execute("SELECT set_config('hnsw.ef_search', %s, true)", (str(min(chunks, 1000)),))
+        rows = conn.execute(
+            """
+            SELECT recall_id FROM (
+                SELECT recall_id, embedding <=> %(q)s::vector AS distance
+                FROM recall_chunks
+                ORDER BY distance
+                LIMIT %(chunks)s
+            ) nearest
+            GROUP BY recall_id
+            ORDER BY min(distance)
+            LIMIT %(limit)s
+            """,
+            {"q": vector_literal(query_vector), "chunks": chunks, "limit": limit},
+        ).fetchall()
     return [row[0] for row in rows]
 
 

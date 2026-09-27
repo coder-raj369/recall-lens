@@ -1,3 +1,4 @@
+import random
 from datetime import date
 
 import pytest
@@ -47,6 +48,25 @@ def test_dense_ranks_by_closest_chunk_and_collapses_chunks(conn, corpus):
     ranked = search.dense(conn, query, limit=3)
     assert ranked[:2] == [corpus["26532"], corpus["26730"]]
     assert len(ranked) == len(set(ranked)) == 3
+
+
+def test_dense_returns_full_candidate_list_through_hnsw_index(conn):
+    rng = random.Random(0)
+    for i in range(120):
+        store.upsert(conn, Recall(agency="fda", source_id=f"F-{i}", title=f"Recall {i}",
+                                  recall_date=date(2026, 1, 1), raw={}))  # fmt: skip
+        conn.execute(
+            "INSERT INTO recall_chunks (recall_id, ord, content, embedding)"
+            " SELECT id, 0, title, %s::vector FROM recalls WHERE source_id = %s",
+            (vector_literal([rng.gauss(0, 1) for _ in range(1024)]), f"F-{i}"),
+        )
+    conn.execute("SET enable_seqscan = off")  # force the HNSW index, as on a large corpus
+    plan = conn.execute(
+        "EXPLAIN SELECT 1 FROM recall_chunks ORDER BY embedding <=> %s::vector LIMIT 400",
+        (vector_literal(one_hot(0)),),
+    ).fetchall()
+    assert any("recall_chunks_embedding_idx" in line for (line,) in plan)
+    assert len(search.dense(conn, one_hot(0), limit=50)) == 50
 
 
 def test_hits_preserve_rank_order(conn, corpus):
