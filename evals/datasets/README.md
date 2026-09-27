@@ -19,3 +19,28 @@ Status: **v0**. Labeled by the project author against the guidelines below; a se
 - **upc**: UPC, GTIN and UDI-DI barcode numbers, digits only.
 - **ndc**: National Drug Codes as printed.
 - Every gold value must appear in its text (checked when the files were built).
+
+## Retrieval
+
+| File | Queries | Purpose |
+|---|---|---|
+| `retrieval_dev.jsonl` | 50 | Tuning retrieval parameters and error analysis |
+| `retrieval_test.jsonl` | 100 | Held-out evaluation |
+
+Known-item search: each query was written by reading one target recall (2024 onward, sampled with a fixed seed and stratified by agency and query type) and phrasing what a consumer, clinician or owner would plausibly type. Queries were written before any retrieval results were inspected. Every third query goes to the dev split.
+
+| Type | Share | Example |
+|---|---|---|
+| `describe` | 27% | "wire bristle grill brush bristles came off and ended up in food" (no brand) |
+| `brand` | 23% | "Peloton Bike+ seat post breaking" |
+| `code` | 20% | "duloxetine lot 222205C", "NDC 16729-442-15" |
+| `vehicle` | 23% | "2025 Ford Bronco front upper control arm ball joint nut missing" |
+| `equipment` | 7% | "Mopar brake pedal 68607178AA", "Bell Scout Air motorcycle helmet penetration" |
+
+Each record has the `target` recall and the full `relevant` set, built by fixed rules rather than by judging results:
+
+- The target is always relevant.
+- **FDA**: every recall in the target's enforcement event (same `event_id`: one firm, one recall action, often several product sizes or store brands).
+- **Code and equipment queries**: every recall whose text contains a code that appears both in the target and as a whole token in the query (word-boundary match; UPCs match on digits).
+
+Most queries have exactly one relevant recall (97 of 150). Large FDA events make the relevant set lenient for a few queries (up to 116 recalls), so results are reported both **strict** (the target only) and **lenient** (any relevant recall). Status: **v0**, written by the project author; queries were not paraphrased or reviewed by a second person.
