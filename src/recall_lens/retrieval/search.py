@@ -1,8 +1,10 @@
-"""Recall search: dense and full-text retrieval fused with reciprocal rank fusion.
+"""Recall search: exact identifier matches first, then dense and full-text retrieval fused
+with reciprocal rank fusion.
 
 Primitives return recall IDs, best match first; `search` combines them and returns Hits.
 """
 
+import re
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -10,12 +12,18 @@ from datetime import date
 
 import psycopg
 
+from recall_lens.extract import rules
 from recall_lens.ingest.embed import vector_literal
 
 # A recall has at most eight chunks, so this many chunk hits always cover `limit` recalls.
 _CHUNKS_PER_RECALL = 8
 RRF_K = 60  # the constant from Cormack et al. (2009); damps the influence of top ranks
 CANDIDATES = 50
+
+CODE_KINDS = ["upc", "ndc", "model", "lot"]  # brands and years are too broad to short-circuit
+MIN_BARE_CODE = 5  # unlabeled tokens shorter than this ("F1", "4x4") are too ambiguous
+_TOKEN = re.compile(r"[A-Z0-9][A-Z0-9+\-./_]*[A-Z0-9]", re.IGNORECASE)
+_YEAR = re.compile(r"^(?:19|20)\d{2}$")
 
 Embedder = Callable[[Sequence[str]], Sequence[Sequence[float]]]
 
@@ -116,6 +124,41 @@ def lexical(
     return [row[0] for row in rows]
 
 
+def query_codes(query: str) -> set[str]:
+    """Identifier values a query may contain: labeled codes plus bare code-like tokens."""
+    values = {value for _, value in rules.extract(query)}
+    labeled = " ".join(values)
+    for token in _TOKEN.findall(query):
+        if len(token) < MIN_BARE_CODE or not any(c.isdigit() for c in token) or _YEAR.match(token):
+            continue
+        if token.isdigit() and token in labeled:  # a digit group of a spaced, labeled UPC
+            continue
+        values.add(token.upper())
+    return values
+
+
+def identifier_matches(
+    conn: psycopg.Connection, query: str, filters: Filters = NO_FILTERS, limit: int = 50
+) -> dict[int, int]:
+    """Recalls whose stored identifiers exactly match codes in the query, with match counts."""
+    codes = query_codes(query)
+    if not codes:
+        return {}
+    where, params = filters.sql()
+    rows = conn.execute(
+        f"""
+        SELECT r.id, count(DISTINCT i.value)
+        FROM recall_identifiers i JOIN recalls r ON r.id = i.recall_id
+        WHERE i.kind = ANY(%(kinds)s) AND i.value = ANY(%(codes)s){where}
+        GROUP BY r.id
+        ORDER BY 2 DESC, r.id
+        LIMIT %(limit)s
+        """,
+        {"kinds": CODE_KINDS, "codes": sorted(codes), "limit": limit, **params},
+    ).fetchall()
+    return dict(rows)
+
+
 def hits(conn: psycopg.Connection, recall_ids: Sequence[int]) -> list[Hit]:
     """Load display fields for recall IDs, preserving their order."""
     rows = conn.execute(
@@ -144,9 +187,14 @@ def search(
     filters: Filters = NO_FILTERS,
     use_dense: bool = True,
     use_lexical: bool = True,
+    use_identifiers: bool = True,
     embedder: Embedder | None = None,
 ) -> list[Hit]:
-    """Retrieve recalls for a free-text query. The flags exist for ablations."""
+    """Retrieve recalls for a free-text query. The use_* flags exist for ablations.
+
+    Exact identifier matches come first, ordered by how many codes they match and then by
+    their fused rank; the fused ranking follows.
+    """
     rankings = []
     if use_dense:
         if embedder is None:
@@ -154,4 +202,9 @@ def search(
         rankings.append(dense(conn, embedder([query])[0], CANDIDATES, filters))
     if use_lexical:
         rankings.append(lexical(conn, query, CANDIDATES, filters))
-    return hits(conn, rrf(rankings)[:limit])
+    fused = rrf(rankings)
+    exact = identifier_matches(conn, query, filters) if use_identifiers else {}
+    position = {recall_id: i for i, recall_id in enumerate(fused)}
+    first = sorted(exact, key=lambda r: (-exact[r], position.get(r, len(fused))))
+    ranked = first + [r for r in fused if r not in exact]
+    return hits(conn, ranked[:limit])

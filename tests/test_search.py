@@ -17,15 +17,16 @@ def one_hot(i, dim=1024):
 def corpus(conn):
     """Three recalls whose chunk embeddings point along distinct axes."""
     rows = [
-        ("26532", "Vornado Recalls Small Room Tower Heaters", "Fire hazard", [0, 3]),
-        ("26730", "Acme Recalls Bike Helmets", "Head injury hazard", [1]),
-        ("26801", "Zen Recalls Crib Mattresses", "Suffocation hazard", [2]),
-    ]
+        ("26532", "Vornado Recalls Small Room Tower Heaters", "Fire hazard", [0, 3], {}),
+        ("26730", "Acme Recalls Bike Helmets", "Head injury hazard", [1],
+         {("model", "H-100"), ("lot", "2023"), ("upc", "012345678905")}),
+        ("26801", "Zen Recalls Crib Mattresses", "Suffocation hazard", [2], {("model", "ZM-300")}),
+    ]  # fmt: skip
     ids = {}
-    for source_id, title, hazard, axes in rows:
+    for source_id, title, hazard, axes, identifiers in rows:
         recall = Recall(
             agency="cpsc", source_id=source_id, title=title, hazard=hazard,
-            recall_date=date(2026, 1, 1), raw={},
+            recall_date=date(2026, 1, 1), raw={}, identifiers=frozenset(identifiers),
         )  # fmt: skip
         store.upsert(conn, recall)
         recall_id = conn.execute(
@@ -127,3 +128,22 @@ def test_filters_apply_to_dense_and_lexical(conn, corpus):
     in_2026 = search.Filters(since=date(2026, 1, 1))
     assert heater_fda not in search.lexical(conn, "heater fire", filters=in_2026)
     assert corpus["26532"] in search.lexical(conn, "heater fire", filters=in_2026)
+
+
+def test_query_codes_take_labeled_and_bare_codes_but_skip_years_and_short_tokens():
+    assert search.query_codes("Lot #: 82886 buprenorphine") == {"82886"}
+    assert search.query_codes("2023 Honda CBR600RR engine") == {"CBR600RR"}
+    assert search.query_codes("upc 0 12345 67890 5") == {"012345678905"}
+    assert search.query_codes("F1 4x4 truck") == set()
+
+
+def test_exact_identifier_matches_come_first(conn, corpus):
+    def embed_towards_heater(texts):
+        return [one_hot(0) for _ in texts]
+
+    results = search.search(conn, "is zm-300 recalled", embedder=embed_towards_heater)
+    assert results[0].source_id == "26801"
+    assert search.identifier_matches(conn, "H-100 helmet 012345678905") == {corpus["26730"]: 2}
+    assert search.identifier_matches(conn, "2023 heaters") == {}  # a year never short-circuits
+    ablated = search.search(conn, "zm-300", use_identifiers=False, embedder=embed_towards_heater)
+    assert ablated[0].source_id == "26532"  # no text overlap, so only the dense ranking remains
