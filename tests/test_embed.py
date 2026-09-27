@@ -40,7 +40,7 @@ def test_embed_pending_is_idempotent_and_reembeds_changed_recalls(conn):
     assert embed.embed_pending(conn, fake_embedder) == 1
     nearest = conn.execute(
         "SELECT count(*) FROM recall_chunks WHERE embedding <=> %s::vector < 0.01",
-        (embed._vector(fake_embedder(["q"])[0]),),
+        (embed.vector_literal(fake_embedder(["q"])[0]),),
     ).fetchone()
     assert nearest == (2,)
 

@@ -51,7 +51,8 @@ def default_embedder(texts: Sequence[str]) -> list[list[float]]:
     return _model().encode(list(texts), normalize_embeddings=True, batch_size=16).tolist()
 
 
-def _vector(values: Sequence[float]) -> str:
+def vector_literal(values: Sequence[float]) -> str:
+    """Format a vector as a pgvector literal for use with a ::vector cast."""
     return "[" + ",".join(f"{v:.6f}" for v in values) + "]"
 
 
@@ -81,7 +82,7 @@ def embed_pending(
                 "INSERT INTO recall_chunks (recall_id, ord, content, embedding)"
                 " VALUES (%s, %s, %s, %s::vector)",
                 [
-                    (rid, i, text, _vector(v))
+                    (rid, i, text, vector_literal(v))
                     for (rid, i, text), v in zip(chunks, vectors, strict=True)
                 ],
             )
