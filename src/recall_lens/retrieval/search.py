@@ -21,6 +21,32 @@ Embedder = Callable[[Sequence[str]], Sequence[Sequence[float]]]
 
 
 @dataclass(frozen=True)
+class Filters:
+    agencies: tuple[str, ...] = ()
+    product_types: tuple[str, ...] = ()
+    since: date | None = None
+    until: date | None = None
+
+    def __bool__(self) -> bool:
+        return bool(self.agencies or self.product_types or self.since or self.until)
+
+    def sql(self) -> tuple[str, dict]:
+        """AND-clauses over the recalls table aliased as r, with their parameters."""
+        clauses = {
+            "r.agency = ANY(%(f_agencies)s)": list(self.agencies) or None,
+            "r.product_type = ANY(%(f_product_types)s)": list(self.product_types) or None,
+            "r.recall_date >= %(f_since)s": self.since,
+            "r.recall_date <= %(f_until)s": self.until,
+        }
+        active = {clause: value for clause, value in clauses.items() if value is not None}
+        params = {clause.split("%(")[1].split(")")[0]: value for clause, value in active.items()}
+        return "".join(f" AND {clause}" for clause in active), params
+
+
+NO_FILTERS = Filters()
+
+
+@dataclass(frozen=True)
 class Hit:
     recall_id: int
     agency: str
@@ -30,48 +56,62 @@ class Hit:
     source_url: str | None
 
 
-def dense(conn: psycopg.Connection, query_vector: Sequence[float], limit: int = 50) -> list[int]:
+def dense(
+    conn: psycopg.Connection,
+    query_vector: Sequence[float],
+    limit: int = 50,
+    filters: Filters = NO_FILTERS,
+) -> list[int]:
     """Nearest recalls by cosine distance of their closest chunk."""
     chunks = limit * _CHUNKS_PER_RECALL
+    where, params = filters.sql()
+    # ponytail: filtered queries scan exactly (the "+ 0" keeps the planner off the HNSW index),
+    # because pgvector < 0.8 filters after the index scan and selective filters starve results.
+    # Exact search over ~26k chunks takes milliseconds; use iterative index scans if it grows.
+    order = "(c.embedding <=> %(q)s::vector) + 0" if filters else "distance"
     with conn.transaction():
         # An HNSW scan returns at most ef_search rows (default 40), silently truncating LIMIT.
         conn.execute("SELECT set_config('hnsw.ef_search', %s, true)", (str(min(chunks, 1000)),))
         rows = conn.execute(
-            """
+            f"""
             SELECT recall_id FROM (
-                SELECT recall_id, embedding <=> %(q)s::vector AS distance
-                FROM recall_chunks
-                ORDER BY distance
+                SELECT c.recall_id, c.embedding <=> %(q)s::vector AS distance
+                FROM recall_chunks c
+                {"JOIN recalls r ON r.id = c.recall_id WHERE TRUE" + where if filters else ""}
+                ORDER BY {order}
                 LIMIT %(chunks)s
             ) nearest
             GROUP BY recall_id
             ORDER BY min(distance)
             LIMIT %(limit)s
             """,
-            {"q": vector_literal(query_vector), "chunks": chunks, "limit": limit},
+            {"q": vector_literal(query_vector), "chunks": chunks, "limit": limit, **params},
         ).fetchall()
     return [row[0] for row in rows]
 
 
-def lexical(conn: psycopg.Connection, query: str, limit: int = 50) -> list[int]:
+def lexical(
+    conn: psycopg.Connection, query: str, limit: int = 50, filters: Filters = NO_FILTERS
+) -> list[int]:
     """Full-text search that matches any query term, ranked by cover density.
 
     websearch_to_tsquery would require every term, which fails for natural-language questions.
     Lexemes come from to_tsvector, so stemming and stop words match the indexed text.
     """
+    where, params = filters.sql()
     rows = conn.execute(
-        """
+        f"""
         WITH q AS (
             SELECT string_agg(quote_literal(lexeme), ' | ')::tsquery AS query
             FROM unnest(to_tsvector('english', %(text)s))
             WHERE strpos(lexeme, chr(92)) = 0  -- backslashes would break the tsquery
         )
         SELECT r.id FROM recalls r, q
-        WHERE r.search_tsv @@ q.query
+        WHERE r.search_tsv @@ q.query{where}
         ORDER BY ts_rank_cd(r.search_tsv, q.query, 1) DESC, r.id  -- 1: damp long documents
         LIMIT %(limit)s
         """,
-        {"text": query, "limit": limit},
+        {"text": query, "limit": limit, **params},
     ).fetchall()
     return [row[0] for row in rows]
 
@@ -101,6 +141,7 @@ def search(
     query: str,
     *,
     limit: int = 10,
+    filters: Filters = NO_FILTERS,
     use_dense: bool = True,
     use_lexical: bool = True,
     embedder: Embedder | None = None,
@@ -110,7 +151,7 @@ def search(
     if use_dense:
         if embedder is None:
             from recall_lens.ingest.embed import default_embedder as embedder
-        rankings.append(dense(conn, embedder([query])[0], CANDIDATES))
+        rankings.append(dense(conn, embedder([query])[0], CANDIDATES, filters))
     if use_lexical:
-        rankings.append(lexical(conn, query, CANDIDATES))
+        rankings.append(lexical(conn, query, CANDIDATES, filters))
     return hits(conn, rrf(rankings)[:limit])

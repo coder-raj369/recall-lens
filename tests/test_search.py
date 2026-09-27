@@ -100,3 +100,30 @@ def test_search_fuses_dense_and_lexical(conn, corpus):
     assert top_two == {"26730", "26801"}  # lexical finds the helmet, dense the crib mattress
     lexical_only = search.search(conn, "helmet", use_dense=False)
     assert [h.source_id for h in lexical_only] == ["26730"]
+
+
+def test_filters_build_only_active_clauses():
+    where, params = search.Filters(agencies=("fda",), since=date(2026, 1, 1)).sql()
+    assert where == " AND r.agency = ANY(%(f_agencies)s) AND r.recall_date >= %(f_since)s"
+    assert params == {"f_agencies": ["fda"], "f_since": date(2026, 1, 1)}
+    assert not search.Filters() and search.Filters(product_types=("food",))
+
+
+def test_filters_apply_to_dense_and_lexical(conn, corpus):
+    heater = Recall(
+        agency="fda", source_id="H-1", title="Heater recall", hazard="Fire hazard",
+        recall_date=date(2025, 5, 1), raw={},
+    )  # fmt: skip
+    store.upsert(conn, heater)
+    conn.execute(
+        "INSERT INTO recall_chunks (recall_id, ord, content, embedding)"
+        " SELECT id, 0, title, %s::vector FROM recalls WHERE source_id = 'H-1'",
+        (vector_literal(one_hot(9)),),
+    )
+    fda_only = search.Filters(agencies=("fda",))
+    heater_fda = conn.execute("SELECT id FROM recalls WHERE source_id = 'H-1'").fetchone()[0]
+    assert search.dense(conn, one_hot(3), filters=fda_only) == [heater_fda]
+    assert search.lexical(conn, "heater fire", filters=fda_only) == [heater_fda]
+    in_2026 = search.Filters(since=date(2026, 1, 1))
+    assert heater_fda not in search.lexical(conn, "heater fire", filters=in_2026)
+    assert corpus["26532"] in search.lexical(conn, "heater fire", filters=in_2026)
