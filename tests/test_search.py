@@ -52,3 +52,14 @@ def test_dense_ranks_by_closest_chunk_and_collapses_chunks(conn, corpus):
 def test_hits_preserve_rank_order(conn, corpus):
     order = [corpus["26801"], corpus["26532"]]
     assert [h.source_id for h in search.hits(conn, order)] == ["26801", "26532"]
+
+
+def test_lexical_matches_any_term_and_ranks_by_coverage(conn, corpus):
+    ranked = search.lexical(conn, "Are Vornado tower heaters a fire risk?")
+    assert ranked[0] == corpus["26532"]
+    assert search.lexical(conn, "helmets") == [corpus["26730"]]
+
+
+def test_lexical_handles_queries_without_terms(conn, corpus):
+    assert search.lexical(conn, "the and of") == []
+    assert search.lexical(conn, "it's a \\ o'brien") == []

@@ -41,6 +41,29 @@ def dense(conn: psycopg.Connection, query_vector: Sequence[float], limit: int = 
     return [row[0] for row in rows]
 
 
+def lexical(conn: psycopg.Connection, query: str, limit: int = 50) -> list[int]:
+    """Full-text search that matches any query term, ranked by cover density.
+
+    websearch_to_tsquery would require every term, which fails for natural-language questions.
+    Lexemes come from to_tsvector, so stemming and stop words match the indexed text.
+    """
+    rows = conn.execute(
+        """
+        WITH q AS (
+            SELECT string_agg(quote_literal(lexeme), ' | ')::tsquery AS query
+            FROM unnest(to_tsvector('english', %(text)s))
+            WHERE strpos(lexeme, chr(92)) = 0  -- backslashes would break the tsquery
+        )
+        SELECT r.id FROM recalls r, q
+        WHERE r.search_tsv @@ q.query
+        ORDER BY ts_rank_cd(r.search_tsv, q.query, 1) DESC, r.id  -- 1: damp long documents
+        LIMIT %(limit)s
+        """,
+        {"text": query, "limit": limit},
+    ).fetchall()
+    return [row[0] for row in rows]
+
+
 def hits(conn: psycopg.Connection, recall_ids: Sequence[int]) -> list[Hit]:
     """Load display fields for recall IDs, preserving their order."""
     rows = conn.execute(
