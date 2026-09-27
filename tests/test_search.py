@@ -63,3 +63,20 @@ def test_lexical_matches_any_term_and_ranks_by_coverage(conn, corpus):
 def test_lexical_handles_queries_without_terms(conn, corpus):
     assert search.lexical(conn, "the and of") == []
     assert search.lexical(conn, "it's a \\ o'brien") == []
+
+
+def test_rrf_rewards_agreement_between_rankings():
+    assert search.rrf([[1, 2, 3], [3, 1, 4]]) == [1, 3, 2, 4]
+    assert search.rrf([[5]], k=0) == [5]
+    assert search.rrf([]) == []
+
+
+def test_search_fuses_dense_and_lexical(conn, corpus):
+    def embed_towards_crib(texts):
+        return [one_hot(2) for _ in texts]
+
+    results = search.search(conn, "helmet", embedder=embed_towards_crib)
+    top_two = {h.source_id for h in results[:2]}
+    assert top_two == {"26730", "26801"}  # lexical finds the helmet, dense the crib mattress
+    lexical_only = search.search(conn, "helmet", use_dense=False)
+    assert [h.source_id for h in lexical_only] == ["26730"]

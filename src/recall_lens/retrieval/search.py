@@ -1,6 +1,10 @@
-"""Recall search primitives. Each returns recall IDs, best match first."""
+"""Recall search: dense and full-text retrieval fused with reciprocal rank fusion.
 
-from collections.abc import Sequence
+Primitives return recall IDs, best match first; `search` combines them and returns Hits.
+"""
+
+from collections import defaultdict
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date
 
@@ -10,6 +14,10 @@ from recall_lens.ingest.embed import vector_literal
 
 # A recall has at most eight chunks, so this many chunk hits always cover `limit` recalls.
 _CHUNKS_PER_RECALL = 8
+RRF_K = 60  # the constant from Cormack et al. (2009); damps the influence of top ranks
+CANDIDATES = 50
+
+Embedder = Callable[[Sequence[str]], Sequence[Sequence[float]]]
 
 
 @dataclass(frozen=True)
@@ -73,3 +81,32 @@ def hits(conn: psycopg.Connection, recall_ids: Sequence[int]) -> list[Hit]:
     ).fetchall()
     by_id = {row[0]: Hit(*row) for row in rows}
     return [by_id[i] for i in recall_ids if i in by_id]
+
+
+def rrf(rankings: Sequence[Sequence[int]], k: int = RRF_K) -> list[int]:
+    """Reciprocal rank fusion: score each ID by the sum of 1 / (k + rank) across rankings."""
+    scores: dict[int, float] = defaultdict(float)
+    for ranking in rankings:
+        for rank, recall_id in enumerate(ranking, start=1):
+            scores[recall_id] += 1 / (k + rank)
+    return sorted(scores, key=lambda recall_id: -scores[recall_id])
+
+
+def search(
+    conn: psycopg.Connection,
+    query: str,
+    *,
+    limit: int = 10,
+    use_dense: bool = True,
+    use_lexical: bool = True,
+    embedder: Embedder | None = None,
+) -> list[Hit]:
+    """Retrieve recalls for a free-text query. The flags exist for ablations."""
+    rankings = []
+    if use_dense:
+        if embedder is None:
+            from recall_lens.ingest.embed import default_embedder as embedder
+        rankings.append(dense(conn, embedder([query])[0], CANDIDATES))
+    if use_lexical:
+        rankings.append(lexical(conn, query, CANDIDATES))
+    return hits(conn, rrf(rankings)[:limit])
