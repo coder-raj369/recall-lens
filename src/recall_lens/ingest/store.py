@@ -17,6 +17,10 @@ Outcome = Literal["inserted", "updated", "unchanged"]
 INCREMENTAL_OVERLAP = timedelta(days=30)
 
 _UPSERT = """
+WITH previous AS (  -- evaluated before the upsert, so it sees the old row
+    SELECT title, description, hazard, remedy FROM recalls
+    WHERE agency = %(agency)s AND source_id = %(source_id)s
+)
 INSERT INTO recalls (agency, source_id, title, description, hazard, remedy, product_type,
                      recall_date, source_url, raw, content_hash)
 VALUES (%(agency)s, %(source_id)s, %(title)s, %(description)s, %(hazard)s, %(remedy)s,
@@ -27,7 +31,10 @@ ON CONFLICT (agency, source_id) DO UPDATE SET
     recall_date = EXCLUDED.recall_date, source_url = EXCLUDED.source_url, raw = EXCLUDED.raw,
     content_hash = EXCLUDED.content_hash, updated_at = now()
 WHERE recalls.content_hash IS DISTINCT FROM EXCLUDED.content_hash
-RETURNING id, xmax = 0 AS inserted
+RETURNING id, xmax = 0 AS inserted,
+    (SELECT (p.title, p.description, p.hazard, p.remedy) IS DISTINCT FROM
+            (%(title)s::text, %(description)s::text, %(hazard)s::text, %(remedy)s::text)
+     FROM previous p) AS text_changed
 """
 
 
@@ -50,13 +57,13 @@ def upsert(conn: psycopg.Connection, recall: Recall) -> Outcome:
         row = conn.execute(_UPSERT, params).fetchone()
         if row is None:
             return "unchanged"
-        recall_id, inserted = row
+        recall_id, inserted, text_changed = row
         if not inserted:
-            # Content changed: identifiers are replaced and stale chunks dropped for re-embedding.
-            # ponytail: an extractor change alone also triggers re-embedding; compare chunk text
-            # before deleting if full-corpus re-extraction becomes routine.
+            # Identifiers are always replaced. Chunks are dropped for re-embedding only when the
+            # text they were built from changed, so re-running extraction stays cheap.
             conn.execute("DELETE FROM recall_identifiers WHERE recall_id = %s", (recall_id,))
-            conn.execute("DELETE FROM recall_chunks WHERE recall_id = %s", (recall_id,))
+            if text_changed:
+                conn.execute("DELETE FROM recall_chunks WHERE recall_id = %s", (recall_id,))
         with conn.cursor() as cur:
             cur.executemany(
                 "INSERT INTO recall_identifiers (recall_id, kind, value) VALUES (%s, %s, %s)",
