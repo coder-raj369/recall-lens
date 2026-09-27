@@ -104,22 +104,30 @@ def dense(
 def lexical(
     conn: psycopg.Connection, query: str, limit: int = 50, filters: Filters = NO_FILTERS
 ) -> list[int]:
-    """Full-text search that matches any query term, ranked by cover density.
+    """Full-text search ranked by the summed inverse document frequency of matched terms.
 
-    websearch_to_tsquery would require every term, which fails for natural-language questions.
-    Lexemes come from to_tsvector, so stemming and stop words match the indexed text.
+    Each distinct query lexeme contributes ln(N / (1 + df)), so distinctive terms such as brand
+    names outweigh words found in nearly every recall ("recall", "lot", "hazard"). Postgres's
+    ts_rank functions have no IDF; document frequencies come from the lexeme_stats view, which
+    ingestion refreshes. Terms newer than the last refresh count as rare. Lexemes come from
+    to_tsvector, so stemming and stop words agree with the indexed text.
     """
     where, params = filters.sql()
     rows = conn.execute(
         f"""
-        WITH q AS (
-            SELECT string_agg(quote_literal(lexeme), ' | ')::tsquery AS query
-            FROM unnest(to_tsvector('english', %(text)s))
-            WHERE strpos(lexeme, chr(92)) = 0  -- backslashes would break the tsquery
+        WITH terms AS (
+            SELECT DISTINCT u.lexeme, greatest(
+                ln((SELECT count(*) FROM recalls)::float / (1 + coalesce(s.ndoc, 0))), 0
+            ) AS idf
+            FROM unnest(to_tsvector('english', %(text)s)) u
+            LEFT JOIN lexeme_stats s ON s.lexeme = u.lexeme
+            WHERE strpos(u.lexeme, chr(92)) = 0  -- backslashes would break the tsquery
         )
-        SELECT r.id FROM recalls r, q
-        WHERE r.search_tsv @@ q.query{where}
-        ORDER BY ts_rank_cd(r.search_tsv, q.query, 1) DESC, r.id  -- 1: damp long documents
+        SELECT r.id
+        FROM terms t JOIN recalls r ON r.search_tsv @@ quote_literal(t.lexeme)::tsquery
+        WHERE TRUE{where}
+        GROUP BY r.id
+        ORDER BY sum(t.idf) DESC, r.id
         LIMIT %(limit)s
         """,
         {"text": query, "limit": limit, **params},

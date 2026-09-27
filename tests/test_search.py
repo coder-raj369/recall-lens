@@ -75,10 +75,18 @@ def test_hits_preserve_rank_order(conn, corpus):
     assert [h.source_id for h in search.hits(conn, order)] == ["26801", "26532"]
 
 
-def test_lexical_matches_any_term_and_ranks_by_coverage(conn, corpus):
+def test_lexical_matches_any_term(conn, corpus):
     ranked = search.lexical(conn, "Are Vornado tower heaters a fire risk?")
     assert ranked[0] == corpus["26532"]
     assert search.lexical(conn, "helmets") == [corpus["26730"]]
+
+
+def test_lexical_weights_rare_terms_above_common_ones(conn, corpus):
+    conn.execute("REFRESH MATERIALIZED VIEW lexeme_stats")
+    # "hazard" is in all three recalls; "helmets" in one, so it decides the ranking.
+    assert search.lexical(conn, "hazard hazard helmets")[0] == corpus["26730"]
+    idf = dict(conn.execute("SELECT lexeme, ndoc FROM lexeme_stats").fetchall())
+    assert idf["hazard"] == 3 and idf["helmet"] == 1
 
 
 def test_lexical_handles_queries_without_terms(conn, corpus):

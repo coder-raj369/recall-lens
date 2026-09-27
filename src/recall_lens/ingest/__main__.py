@@ -55,6 +55,9 @@ def main(argv: list[str] | None = None) -> int:
                 + " ".join(f"{k}={v}" for k, v in counts.items())
             )
 
+        conn.execute("REFRESH MATERIALIZED VIEW lexeme_stats")  # document frequencies for search
+        conn.commit()
+
         if not args.no_embed:
             from recall_lens.ingest.embed import embed_pending
 
