@@ -96,10 +96,10 @@ def test_search_fuses_dense_and_lexical(conn, corpus):
     def embed_towards_crib(texts):
         return [one_hot(2) for _ in texts]
 
-    results = search.search(conn, "helmet", embedder=embed_towards_crib)
+    results = search.search(conn, "helmet", embedder=embed_towards_crib, use_rerank=False)
     top_two = {h.source_id for h in results[:2]}
     assert top_two == {"26730", "26801"}  # lexical finds the helmet, dense the crib mattress
-    lexical_only = search.search(conn, "helmet", use_dense=False)
+    lexical_only = search.search(conn, "helmet", use_dense=False, use_rerank=False)
     assert [h.source_id for h in lexical_only] == ["26730"]
 
 
@@ -141,9 +141,39 @@ def test_exact_identifier_matches_come_first(conn, corpus):
     def embed_towards_heater(texts):
         return [one_hot(0) for _ in texts]
 
-    results = search.search(conn, "is zm-300 recalled", embedder=embed_towards_heater)
+    results = search.search(
+        conn, "is zm-300 recalled", embedder=embed_towards_heater, use_rerank=False
+    )
     assert results[0].source_id == "26801"
     assert search.identifier_matches(conn, "H-100 helmet 012345678905") == {corpus["26730"]: 2}
     assert search.identifier_matches(conn, "2023 heaters") == {}  # a year never short-circuits
-    ablated = search.search(conn, "zm-300", use_identifiers=False, embedder=embed_towards_heater)
+    ablated = search.search(
+        conn, "zm-300", use_identifiers=False, use_rerank=False, embedder=embed_towards_heater
+    )
     assert ablated[0].source_id == "26532"  # no text overlap, so only the dense ranking remains
+
+
+def test_rerank_reorders_fused_candidates_but_keeps_exact_matches_first(conn, corpus):
+    def embed_towards_heater(texts):
+        return [one_hot(0) for _ in texts]
+
+    def prefers_mattresses(query, documents):
+        return [1.0 if "Mattress" in d else 0.0 for d in documents]
+
+    results = search.search(conn, "hazard", embedder=embed_towards_heater,
+                            reranker=prefers_mattresses)  # fmt: skip
+    assert results[0].source_id == "26801"
+    exact_first = search.search(conn, "hazard H-100", embedder=embed_towards_heater,
+                                reranker=prefers_mattresses)  # fmt: skip
+    assert [h.source_id for h in exact_first[:2]] == ["26730", "26801"]
+
+
+def test_bge_reranker_prefers_the_relevant_document():
+    pytest.importorskip("sentence_transformers")
+    from recall_lens.retrieval.rerank import default_reranker
+
+    heater, helmet = default_reranker(
+        "space heater that can catch fire",
+        ["Tower heaters recalled due to fire hazard", "Bike helmets recalled due to head injury"],
+    )
+    assert heater > helmet

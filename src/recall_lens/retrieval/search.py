@@ -1,5 +1,5 @@
 """Recall search: exact identifier matches first, then dense and full-text retrieval fused
-with reciprocal rank fusion.
+with reciprocal rank fusion and reranked by a cross-encoder.
 
 Primitives return recall IDs, best match first; `search` combines them and returns Hits.
 """
@@ -14,11 +14,14 @@ import psycopg
 
 from recall_lens.extract import rules
 from recall_lens.ingest.embed import vector_literal
+from recall_lens.retrieval.rerank import Reranker
 
 # A recall has at most eight chunks, so this many chunk hits always cover `limit` recalls.
 _CHUNKS_PER_RECALL = 8
 RRF_K = 60  # the constant from Cormack et al. (2009); damps the influence of top ranks
 CANDIDATES = 50
+RERANK_CANDIDATES = 30
+RERANK_TEXT_CHARS = 2_000  # the cross-encoder reads ~512 tokens
 
 CODE_KINDS = ["upc", "ndc", "model", "lot"]  # brands and years are too broad to short-circuit
 MIN_BARE_CODE = 5  # unlabeled tokens shorter than this ("F1", "4x4") are too ambiguous
@@ -159,6 +162,22 @@ def identifier_matches(
     return dict(rows)
 
 
+def rerank(
+    conn: psycopg.Connection, query: str, recall_ids: Sequence[int], reranker: Reranker
+) -> list[int]:
+    """Reorder recalls by cross-encoder relevance of their title, hazard and description."""
+    rows = conn.execute(
+        "SELECT id, concat_ws(E'\\n', title, hazard, left(description, %s)) FROM recalls"
+        " WHERE id = ANY(%s)",
+        (RERANK_TEXT_CHARS, list(recall_ids)),
+    ).fetchall()
+    texts = dict(rows)
+    ordered = [recall_id for recall_id in recall_ids if recall_id in texts]
+    scores = reranker(query, [texts[recall_id] for recall_id in ordered])
+    by_score = sorted(zip(scores, range(len(ordered)), ordered, strict=True), reverse=True)
+    return [recall_id for _, _, recall_id in by_score]
+
+
 def hits(conn: psycopg.Connection, recall_ids: Sequence[int]) -> list[Hit]:
     """Load display fields for recall IDs, preserving their order."""
     rows = conn.execute(
@@ -188,12 +207,14 @@ def search(
     use_dense: bool = True,
     use_lexical: bool = True,
     use_identifiers: bool = True,
+    use_rerank: bool = True,
     embedder: Embedder | None = None,
+    reranker: Reranker | None = None,
 ) -> list[Hit]:
     """Retrieve recalls for a free-text query. The use_* flags exist for ablations.
 
     Exact identifier matches come first, ordered by how many codes they match and then by
-    their fused rank; the fused ranking follows.
+    their fused rank; the fused ranking follows, its head reordered by the cross-encoder.
     """
     rankings = []
     if use_dense:
@@ -206,5 +227,10 @@ def search(
     exact = identifier_matches(conn, query, filters) if use_identifiers else {}
     position = {recall_id: i for i, recall_id in enumerate(fused)}
     first = sorted(exact, key=lambda r: (-exact[r], position.get(r, len(fused))))
-    ranked = first + [r for r in fused if r not in exact]
-    return hits(conn, ranked[:limit])
+    rest = [r for r in fused if r not in exact]
+    if use_rerank and rest:
+        if reranker is None:
+            from recall_lens.retrieval.rerank import default_reranker as reranker
+        head = rerank(conn, query, rest[:RERANK_CANDIDATES], reranker)
+        rest = head + rest[RERANK_CANDIDATES:]
+    return hits(conn, (first + rest)[:limit])
