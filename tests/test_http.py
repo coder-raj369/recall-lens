@@ -8,13 +8,19 @@ from recall_lens.ingest import http
 
 
 def serve(responses):
-    """Serve the given (status, body) pairs in order on a local port."""
+    """Serve (status, body) pairs in order; body None sends a truncated response."""
     queue = list(responses)
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             status, body = queue.pop(0)
             self.send_response(status)
+            if body is None:  # promise 100 bytes, send 2, then close the connection
+                self.send_header("Content-Length", "100")
+                self.end_headers()
+                self.wfile.write(b"{}")
+                self.close_connection = True
+                return
             self.end_headers()
             self.wfile.write(body)
 
@@ -35,6 +41,13 @@ def test_retries_transient_errors_then_succeeds():
     server, queue = serve([(503, b""), (429, b""), (200, b'{"ok": true}')])
     url = f"http://127.0.0.1:{server.server_port}/"
     assert http.get_json(url, {"q": "a b"}, backoff=0) == {"ok": True}
+    assert queue == []
+    server.shutdown()
+
+
+def test_retries_truncated_responses():
+    server, queue = serve([(200, None), (200, b'{"ok": true}')])
+    assert http.get_json(f"http://127.0.0.1:{server.server_port}/", backoff=0) == {"ok": True}
     assert queue == []
     server.shutdown()
 

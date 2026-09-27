@@ -3,6 +3,7 @@
 Deliberately stdlib-only; the ingestion workload is a few hundred sequential requests.
 """
 
+import http.client
 import json
 import time
 import urllib.error
@@ -55,7 +56,8 @@ def fetch(
             if error.code not in RETRY_STATUSES or attempt == retries:
                 raise
             delay = _retry_after(error) or backoff * 2**attempt
-        except (urllib.error.URLError, TimeoutError):
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException):
+            # HTTPException covers IncompleteRead: a connection dropped mid-body.
             if attempt == retries:
                 raise
             delay = backoff * 2**attempt
