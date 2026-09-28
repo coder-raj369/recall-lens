@@ -23,6 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--product-type", nargs="+", default=(), help="e.g. food drug vehicle")
     parser.add_argument("--since", type=date.fromisoformat)
     parser.add_argument("--until", type=date.fromisoformat)
+    parser.add_argument("--rerank", action="store_true", help="rerank with bge-reranker-v2-m3")
     args = parser.parse_args(argv)
     filters = Filters(tuple(args.agency), tuple(args.product_type), args.since, args.until)
     conninfo = os.environ.get("DATABASE_URL")
@@ -30,7 +31,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("DATABASE_URL is not set")
     with psycopg.connect(conninfo) as conn:
         for rank, hit in enumerate(
-            search(conn, args.query, limit=args.limit, filters=filters), start=1
+            search(conn, args.query, limit=args.limit, filters=filters, use_rerank=args.rerank),
+            start=1,
         ):
             print(
                 f"{rank:>2}. [{hit.agency.upper()} {hit.source_id}] {hit.recall_date}  {hit.title}"

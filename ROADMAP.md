@@ -8,7 +8,7 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 |---|---|---|---|
 | [0](#phase-0--foundations) | 1 | Foundations | Complete |
 | [1](#phase-1--ingestion-and-corpus) | 2–3 | Ingestion and corpus | Complete |
-| [2](#phase-2--retrieval) | 3–4 | Retrieval | Planned |
+| [2](#phase-2--retrieval) | 3–4 | Retrieval | Complete |
 | [3](#phase-3--perception) | 5–6 | Perception | Planned |
 | [4](#phase-4--multi-agent-orchestration) | 7–8 | Multi-agent orchestration | Planned |
 | [5](#phase-5--evaluation-and-llmops) | 9–10 | Evaluation and LLMOps | Planned |
@@ -71,22 +71,22 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 **Goal:** find the right recall for a text query, and prove which retrieval design is best.
 
 **Exit criteria**
-- 150-case text-query gold set.
-- Recall@5 and MRR reported for dense, hybrid, and hybrid + rerank.
+- 150-query known-item gold set (50 dev, 100 held-out test).
+- Recall@k and MRR reported for dense, full-text, hybrid, hybrid + identifiers and hybrid + identifiers + rerank.
 
-**Planned commits**
-- [ ] `feat(retrieval): add dense vector search over recall chunks`
-- [ ] `feat(retrieval): add Postgres full-text search`
-- [ ] `feat(retrieval): fuse dense and full-text results with reciprocal rank fusion`
-- [ ] `feat(retrieval): filter by agency, product type and recall date`
-- [ ] `feat(retrieval): rerank candidates with bge-reranker-v2-m3`
-- [ ] `feat(retrieval): short-circuit on exact identifier matches`
-- [ ] `feat(evals): define gold-set format and loader`
-- [ ] `feat(evals): add 150-case text-query gold set`
-- [ ] `feat(evals): add Recall@k and MRR harness`
-- [ ] `feat(evals): add retrieval ablation runner`
-- [ ] `perf(db): tune HNSW parameters from measured recall and latency`
-- [ ] `docs: publish Phase 2 retrieval results`
+**Commits** (revised during the phase: ablation results added the IDF and HNSW fixes, and a flaky network exposed an ingestion bug; the planned HNSW tuning became a measurement once the fix showed no tuning was needed)
+- [x] `perf(ingest): re-embed recalls only when their text changes`
+- [x] `feat(retrieval): add dense vector search over recall chunks`
+- [x] `feat(retrieval): add Postgres full-text search`
+- [x] `feat(retrieval): fuse dense and full-text results with reciprocal rank fusion`
+- [x] `fix(retrieval): widen the HNSW search so dense retrieval returns full candidate lists`
+- [x] `feat(retrieval): filter by agency, product type and recall date`
+- [x] `feat(retrieval): short-circuit on exact identifier matches`
+- [x] `feat(evals): add known-item retrieval gold set`
+- [x] `fix(ingest): retry responses truncated by dropped connections`
+- [x] `feat(retrieval): rerank candidates with bge-reranker-v2-m3`
+- [x] `feat(retrieval): weight full-text matches by inverse document frequency`
+- [x] `feat(evals): add retrieval ablation harness and publish Phase 2 results`
 
 ---
 

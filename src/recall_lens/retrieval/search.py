@@ -215,14 +215,15 @@ def search(
     use_dense: bool = True,
     use_lexical: bool = True,
     use_identifiers: bool = True,
-    use_rerank: bool = True,
+    use_rerank: bool = False,  # opt-in: ~5 s per query on CPU; see README, Phase 2 results
     embedder: Embedder | None = None,
     reranker: Reranker | None = None,
 ) -> list[Hit]:
     """Retrieve recalls for a free-text query. The use_* flags exist for ablations.
 
     Exact identifier matches come first, ordered by how many codes they match and then by
-    their fused rank; the fused ranking follows, its head reordered by the cross-encoder.
+    their fused rank; the fused ranking follows, its head optionally reordered by the
+    cross-encoder.
     """
     rankings = []
     if use_dense:

@@ -168,11 +168,11 @@ def test_rerank_reorders_fused_candidates_but_keeps_exact_matches_first(conn, co
     def prefers_mattresses(query, documents):
         return [1.0 if "Mattress" in d else 0.0 for d in documents]
 
-    results = search.search(conn, "hazard", embedder=embed_towards_heater,
+    results = search.search(conn, "hazard", embedder=embed_towards_heater, use_rerank=True,
                             reranker=prefers_mattresses)  # fmt: skip
     assert results[0].source_id == "26801"
     exact_first = search.search(conn, "hazard H-100", embedder=embed_towards_heater,
-                                reranker=prefers_mattresses)  # fmt: skip
+                                use_rerank=True, reranker=prefers_mattresses)  # fmt: skip
     assert [h.source_id for h in exact_first[:2]] == ["26730", "26801"]
 
 

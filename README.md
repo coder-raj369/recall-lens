@@ -6,7 +6,7 @@
 
 RecallLens is a multimodal, multi-agent system that identifies a product from a photo (or a receipt, or a voice query), extracts the identifiers that actually determine recall status (UPC, model number, lot code, best-by date, VIN), searches recalls from every major US recall authority, verifies whether *this specific unit* falls inside the recalled range, and explains the hazard and remedy with citations. When it cannot be sure, it says so.
 
-> **Status:** Phases 0–1 complete (foundations; ingestion and corpus). Phase 2 (retrieval) next. See [ROADMAP.md](ROADMAP.md) for the phased delivery plan.
+> **Status:** Phases 0–2 complete (foundations; ingestion and corpus; retrieval). Phase 3 (perception) next. See [ROADMAP.md](ROADMAP.md) for the phased delivery plan.
 
 ---
 
@@ -92,7 +92,7 @@ Evaluation is built alongside each capability, not after it.
 | Stage | Dataset | Metrics |
 |---|---|---|
 | Identifier extraction | 160 hand-labeled recalls (100 dev, 60 held-out test) | Field-level precision, recall, F1 |
-| Retrieval | 150 text queries → recall IDs | Recall@k, MRR; dense vs hybrid vs hybrid + rerank |
+| Retrieval | 150 known-item queries (50 dev, 100 held-out test) | Recall@k, MRR; ablation from dense to hybrid + identifiers + rerank |
 | Perception | 100+ labeled product photos | Field accuracy; crop vs no-crop |
 | End to end | 300 cases incl. hard negatives (same product, different lot) | **False-negative rate**, precision, abstention rate, faithfulness |
 | Operations | Load tests | p50/p95 latency, cost per query, cache hit rate |
@@ -129,11 +129,37 @@ Populated as phases complete. No numbers are reported before they are measured.
 
 Values are precision / recall / F1. The production configuration was chosen on the dev split, where letting GLiNER add codes lowered code F1 from 0.59 to 0.55. Keeping codes rule-based holds their precision at 0.93 by design: a wrong lot or model number is worse than a missing one, because the verifier can ask for a clearer photo when a code is missing but cannot detect a confidently wrong one. The main gaps are unlabeled model names and bare UPC digits, which Phase 3's label reading targets.
 
+#### Phase 2: retrieval
+
+Held-out test split: 100 known-item queries over the 18,328-recall corpus ([how the set was built](evals/datasets/README.md#retrieval)). Each row adds one stage. Recall@k is the share of queries with the target recall in the top k; latency is per query on an 8 GB Apple-silicon laptop, excluding query embedding.
+
+| Configuration | Strict R@1 | Strict R@5 | Strict MRR@10 | Lenient R@5 | p50 | p95 |
+|---|---|---|---|---|---|---|
+| Dense (bge-m3, HNSW) | 0.63 | 0.82 | 0.72 | 0.87 | 94 ms | 323 ms |
+| Full-text, IDF-weighted | 0.83 | 0.97 | 0.88 | 0.99 | 4 ms | 11 ms |
+| Hybrid (RRF of both) | 0.70 | 0.92 | 0.80 | 0.97 | 29 ms | 72 ms |
+| **+ exact identifier matches** (default) | **0.78** | **0.94** | **0.85** | **0.98** | **33 ms** | **73 ms** |
+| + bge-reranker-v2-m3 (`--rerank`) | 0.85 | 0.99 | 0.90 | 1.00 | 4.8 s | 23.8 s |
+
+| Strict R@5 by query type | Brand (23) | Code (21) | Descriptive (26) | Equipment (7) | Vehicle (23) |
+|---|---|---|---|---|---|
+| Dense | 0.91 | 0.62 | 0.77 | 0.71 | 1.00 |
+| Full-text, IDF-weighted | 0.96 | 1.00 | 0.92 | 1.00 | 1.00 |
+| Hybrid + identifiers | 0.96 | 1.00 | 0.81 | 1.00 | 1.00 |
+| + reranker | 0.96 | 1.00 | 1.00 | 1.00 | 1.00 |
+
+What the ablation showed, and what changed because of it:
+
+- **Postgres full-text ranking needed IDF.** With `ts_rank_cd`, full-text search reached 0.52 R@5 on the dev split and dragged hybrid fusion below dense search alone, because words in nearly every recall ("recall", "lot", "hazard") outranked brand names. Ranking by summed inverse document frequency from a materialized `lexeme_stats` view lifted it to 0.96 on dev and 0.97 on test.
+- **Dense search misses codes** (0.62 R@5 on code queries). Exact identifier lookup fixes that inside the hybrid pipeline (1.00).
+- **The reranker is opt-in, decided on dev.** On the dev split it added 0.02 MRR for about 5 s per query on this CPU-only laptop, so it was not enabled by default. The held-out split shows a larger gain concentrated on descriptive queries (0.81 → 1.00 R@5). The default was deliberately not changed after seeing test results; enabling it belongs with GPU serving and a latency budget in Phase 5.
+- **Known bias: full-text alone looks best.** Queries were written while reading their target recall, so they share its rare words, and equal-weight fusion lets dense search dilute that signal. Photo-derived queries in Phase 3 will test paraphrase robustness without that bias before fusion weights are tuned.
+- **HNSW needed no tuning yet.** pgvector's HNSW returned only `ef_search` (40) rows, silently truncating candidates, until `ef_search` was raised per query. With that fix it keeps 97.3% of the exact top-50 neighbors at 27 ms p50 against 69 ms for an exact scan. Filtered searches scan exactly, since pgvector 0.6 filters after the index scan.
+
 #### Later phases
 
 | Metric | Baseline | Current |
 |---|---|---|
-| Retrieval Recall@5 | — | — |
 | End-to-end false-negative rate | — | — |
 | p95 latency | — | — |
 | Cost per query | — | — |
@@ -163,6 +189,15 @@ uv run python -m recall_lens.ingest --no-model --no-embed # rules only, no ML de
 uv run python -m recall_lens.evals.extraction --split test
 ```
 
+Search and evaluate retrieval:
+
+```bash
+uv run python -m recall_lens.retrieval "is my vornado space heater recalled for fire"
+uv run python -m recall_lens.retrieval "rear camera blank image" --agency nhtsa --since 2025-01-01
+uv run python -m recall_lens.retrieval "baby lounger suffocation" --rerank   # cross-encoder, slower
+uv run python -m recall_lens.evals.retrieval --split test --hnsw-check
+```
+
 Without `--since`, ingestion is incremental: each agency restarts from its last successful run minus a 30-day overlap.
 
 ## Repository layout
@@ -175,12 +210,13 @@ recall-lens/
 │   ├── db/                Schema migrations and runner
 │   ├── ingest/            Agency connectors, idempotent store, embedding, sync CLI
 │   ├── extract/           Rule-based and GLiNER identifier extraction
+│   ├── retrieval/         Dense, IDF full-text and identifier search, fusion, reranking
 │   └── evals/             Evaluation harnesses
 ├── tests/                 Test suite (real recall records as fixtures)
 └── .github/workflows/     CI and nightly ingestion
 ```
 
-Modules for retrieval, perception, agents, the API and the web client are added in the phase that introduces them; see [ROADMAP.md](ROADMAP.md).
+Modules for perception, agents, the API and the web client are added in the phase that introduces them; see [ROADMAP.md](ROADMAP.md).
 
 ## Disclaimer
 
