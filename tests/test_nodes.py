@@ -73,3 +73,48 @@ def test_retrieve_passes_codes_and_returns_plain_candidates(conn):
         "source_url",
     }
     assert nodes.retrieve(services)({"search_text": "", "codes": []}) == {"candidates": []}
+
+
+def test_verify_checks_each_candidate_against_its_stored_scope(conn):
+    from datetime import date
+
+    from recall_lens.agents.state import AFFECTED, NOT_AFFECTED
+    from recall_lens.ingest import store
+    from recall_lens.ingest.models import Recall
+
+    antacid = Recall(
+        agency="fda",
+        source_id="D-0565-2026",
+        title="CAREone Calcium Antacid 96 tablets",
+        description="Codes: Lot #: 1276118, 1276119, expires: JAN 2029.",
+        recall_date=date(2026, 5, 28),
+        raw={},
+        identifiers=frozenset({("lot", "1276118"), ("lot", "1276119"), ("brand", "CAREONE")}),
+    )
+    transit = Recall(
+        agency="nhtsa",
+        source_id="26V061000",
+        title="Ford Motor Company recall: Frame",
+        description="Ford is recalling certain 2023-2024 Transit vehicles.",
+        recall_date=date(2026, 2, 3),
+        raw={"affected": ["FORD TRANSIT (2023, 2024)"]},
+        identifiers=frozenset({("brand", "FORD"), ("model", "TRANSIT")}),
+    )
+    store.upsert(conn, antacid)
+    store.upsert(conn, transit)
+    ids = dict(conn.execute("SELECT source_id, id FROM recalls").fetchall())
+    candidates = [
+        {"recall_id": ids["D-0565-2026"], "agency": "fda", "source_id": "D-0565-2026", "title": "",
+         "source_url": None},
+        {"recall_id": ids["26V061000"], "agency": "nhtsa", "source_id": "26V061000", "title": "",
+         "source_url": None},
+    ]  # fmt: skip
+    state = {
+        "candidates": candidates,
+        "identifiers": [["lot", "1276125"]],
+        "codes": ["1276125"],
+        "text": "CAREone antacid, lot # 1276125. Also my 2024 Ford Transit.",
+    }
+    verdicts = nodes.verify(nodes.Services(conn=conn))(state)["verdicts"]
+    assert [v["verdict"] for v in verdicts] == [NOT_AFFECTED, AFFECTED]
+    assert verdicts[0]["method"] == "rules" and "1276125" in verdicts[0]["reason"]

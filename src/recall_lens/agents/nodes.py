@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import psycopg
 
+from recall_lens.agents import verify as rules_verifier
 from recall_lens.agents.state import CheckState
 from recall_lens.extract import rules
 from recall_lens.perception import vin
@@ -83,5 +84,50 @@ def retrieve(services: Services):
             for h in hits
         ]  # fmt: skip
         return {"candidates": candidates}
+
+    return run
+
+
+SCOPE_CHARS = 20_000  # scope wording is near the start; some FDA reports run to megabytes
+
+
+def load_scope(conn: psycopg.Connection, recall_id: int) -> rules_verifier.Scope:
+    title, text, affected = conn.execute(
+        "SELECT title, concat_ws(E'\\n', title, left(description, %s)), raw->'affected'"
+        " FROM recalls WHERE id = %s",
+        (SCOPE_CHARS, recall_id),
+    ).fetchone()
+    identifiers = conn.execute(
+        "SELECT kind, value FROM recall_identifiers WHERE recall_id = %s", (recall_id,)
+    ).fetchall()
+    return rules_verifier.parse_scope(title, text, identifiers, affected or ())
+
+
+def facts(state: CheckState) -> rules_verifier.Facts:
+    pairs = [tuple(pair) for pair in state.get("identifiers", [])]
+    typed: dict[str, set[str]] = {}
+    for kind, value in pairs:
+        if kind != "brand":
+            typed.setdefault(kind, set()).add(value)
+    return rules_verifier.Facts(
+        codes=frozenset(state.get("codes", [])) | {v for k, v in pairs if k != "brand"},
+        typed={kind: frozenset(values) for kind, values in typed.items()},
+        text=state.get("text", ""),
+        brands=frozenset(v for k, v in pairs if k == "brand"),
+    )
+
+
+def verify(services: Services):
+    def run(state: CheckState) -> dict:
+        known = facts(state)
+        verdicts = []
+        for candidate in state.get("candidates", []):
+            scope = load_scope(services.conn, candidate["recall_id"])
+            verdict, reason, evidence = rules_verifier.verify(scope, known)
+            verdicts.append(
+                {"source_id": candidate["source_id"], "agency": candidate["agency"],
+                 "verdict": verdict, "reason": reason, "evidence": evidence, "method": "rules"}
+            )  # fmt: skip
+        return {"verdicts": verdicts}
 
     return run
