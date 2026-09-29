@@ -14,6 +14,10 @@ dev = [
     "pytest>=8.3",
     "ruff>=0.6",
 ]
+# Claude arbitration (off by default: billed per call).
+llm = [
+    "anthropic>=1.9",
+]
 # Model-based extraction and embeddings. Optional so CI and the API stay lightweight.
 ml = [
     "gliner>=0.2.16",

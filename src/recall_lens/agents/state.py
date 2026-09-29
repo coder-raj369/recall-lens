@@ -23,7 +23,8 @@ class Verdict(TypedDict):
     verdict: str
     reason: str  # one sentence a person can check against the notice
     evidence: str | None  # text quoted from the recall notice
-    method: str  # "rules", "llm" or "none"
+    method: str  # "rules" or "llm"
+    confidence: float | None  # the LLM's own estimate; None for rules, which are exact
 
 
 class CheckState(TypedDict, total=False):

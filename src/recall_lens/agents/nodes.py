@@ -126,7 +126,8 @@ def verify(services: Services):
             verdict, reason, evidence = rules_verifier.verify(scope, known)
             verdicts.append(
                 {"source_id": candidate["source_id"], "agency": candidate["agency"],
-                 "verdict": verdict, "reason": reason, "evidence": evidence, "method": "rules"}
+                 "verdict": verdict, "reason": reason, "evidence": evidence, "method": "rules",
+                 "confidence": None}
             )  # fmt: skip
         return {"verdicts": verdicts}
 
