@@ -9,7 +9,7 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 | [0](#phase-0--foundations) | 1 | Foundations | Complete |
 | [1](#phase-1--ingestion-and-corpus) | 2–3 | Ingestion and corpus | Complete |
 | [2](#phase-2--retrieval) | 3–4 | Retrieval | Complete |
-| [3](#phase-3--perception) | 5–6 | Perception | Planned |
+| [3](#phase-3--perception) | 5–6 | Perception | Complete |
 | [4](#phase-4--multi-agent-orchestration) | 7–8 | Multi-agent orchestration | Planned |
 | [5](#phase-5--evaluation-and-llmops) | 9–10 | Evaluation and LLMOps | Planned |
 | [6](#phase-6--product-and-launch) | 11–12 | Product and launch | Planned |
@@ -92,24 +92,26 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 
 ## Phase 3 — Perception
 
-**Goal:** turn a photo into typed identifiers reliably.
+**Goal:** turn a photo into typed identifiers reliably, and find its recall.
 
 **Exit criteria**
-- 100+ labeled product photos.
-- Field accuracy reported with and without detection-based cropping.
+- 150 labeled public product photos (50 dev, 100 held-out test).
+- Field accuracy reported for whole-photo reading and with detected regions.
+- Photo-to-recall retrieval measured end to end.
 
-**Planned commits**
-- [ ] `feat(perception): add client for GPU model endpoints`
-- [ ] `feat(perception): detect label, barcode and lot-code regions with OWLv2`
-- [ ] `feat(perception): crop and upscale detected regions`
-- [ ] `feat(perception): read labels into structured fields with a VLM`
-- [ ] `feat(perception): decode barcodes and resolve products via Open Food Facts`
-- [ ] `feat(perception): decode VINs via NHTSA vPIC`
-- [ ] `feat(perception): parse receipts into line items`
-- [ ] `feat(evals): add labeled product-photo set`
-- [ ] `feat(evals): add field-accuracy metrics for perception`
-- [ ] `feat(evals): add crop versus full-frame ablation`
-- [ ] `docs: publish Phase 3 perception results`
+**Commits** (revised during the phase: local Florence-2 and OWLv2 replaced the hosted VLM and GPU endpoint client ([ADR-0006](docs/adr/0006-local-open-vision-models.md)); receipt parsing moved to Phase 6, where the watchlist uses it; dev error analysis added two fixes)
+- [x] `feat(evals): add labeled public photo set for perception`
+- [x] `feat(perception): load photos as upright, size-bounded RGB images`
+- [x] `feat(perception): read label text with Florence-2 OCR`
+- [x] `feat(perception): detect label, barcode and rating-plate regions with OWLv2`
+- [x] `feat(perception): crop detected regions for OCR without distortion`
+- [x] `feat(perception): extract identifiers from OCR text of photos and label regions`
+- [x] `feat(perception): decode barcodes and resolve products via Open Food Facts`
+- [x] `feat(perception): find VINs in photo text and decode them with NHTSA vPIC`
+- [x] `fix(extract): recognize date-code labels and linked code lists`
+- [x] `feat(perception): find recalls from a product photo`
+- [x] `fix(perception): join barcode digit groups that OCR splits apart`
+- [x] `feat(evals): add photo evaluation harness and publish Phase 3 results`
 
 ---
 
@@ -176,6 +178,7 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 - [ ] `feat(web): add camera capture and upload`
 - [ ] `feat(web): stream results with citations`
 - [ ] `feat(watchlist): add watchlist schema and API`
+- [ ] `feat(watchlist): parse receipt photos into line items (moved from Phase 3)`
 - [ ] `feat(watchlist): build watchlists from receipt photos`
 - [ ] `feat(watchlist): match new recalls nightly and send email alerts`
 - [ ] `feat(privacy): purge uploaded images after extraction`

@@ -9,3 +9,4 @@ Significant design decisions are recorded here using a lightweight [Michael Nyga
 | [0003](0003-deterministic-verification.md) | Verify matches deterministically before consulting an LLM | Accepted |
 | [0004](0004-defer-fsis-ingestion.md) | Defer USDA FSIS ingestion until API access is available | Accepted |
 | [0005](0005-scheduled-ingestion-github-actions.md) | Schedule ingestion with GitHub Actions instead of Prefect | Accepted |
+| [0006](0006-local-open-vision-models.md) | Read photos with local open models (Florence-2 and OWLv2) | Accepted |

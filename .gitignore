@@ -24,3 +24,6 @@ evals/reports/
 .DS_Store
 .idea/
 .vscode/
+
+# Downloaded evaluation inputs
+evals/.cache/

@@ -6,7 +6,7 @@
 
 RecallLens is a multimodal, multi-agent system that identifies a product from a photo (or a receipt, or a voice query), extracts the identifiers that actually determine recall status (UPC, model number, lot code, best-by date, VIN), searches recalls from every major US recall authority, verifies whether *this specific unit* falls inside the recalled range, and explains the hazard and remedy with citations. When it cannot be sure, it says so.
 
-> **Status:** Phases 0–2 complete (foundations; ingestion and corpus; retrieval). Phase 3 (perception) next. See [ROADMAP.md](ROADMAP.md) for the phased delivery plan.
+> **Status:** Phases 0–3 complete (foundations; ingestion and corpus; retrieval; perception). Phase 4 (multi-agent orchestration) next. See [ROADMAP.md](ROADMAP.md) for the phased delivery plan.
 
 ---
 
@@ -58,18 +58,17 @@ flowchart TD
 
 ## Hugging Face tasks
 
-| Task | Model | Role |
-|---|---|---|
-| Zero-Shot Object Detection | OWLv2 | Locate label, barcode and lot-code regions |
-| Image-Text-to-Text | Open VLM (Qwen-VL family) | Read labels into structured fields |
-| Document Question Answering | VLM / Donut | Parse receipts into line items |
-| Visual Document Retrieval | ColQwen | Retrieve image-only recall notices |
-| Token Classification | GLiNER | Extract model, lot, UPC and date ranges from text |
-| Sentence Similarity / Feature Extraction | bge-m3 | Dense embeddings |
-| Text Ranking | bge-reranker-v2-m3 | Cross-encoder reranking |
-| Zero-Shot Classification | LLM / NLI | Route queries by agency and hazard category |
-| Automatic Speech Recognition *(stretch)* | whisper-large-v3-turbo | Voice queries |
-| Text Generation | Claude Sonnet 5 / Haiku 4.5 | Verification, advice, routing |
+| Task | Model | Role | Status |
+|---|---|---|---|
+| Zero-Shot Object Detection | OWLv2 | Locate label, barcode and rating-plate regions | In use (Phase 3) |
+| Image-to-Text | Florence-2-large | Read label text (OCR) from photos and regions | In use (Phase 3) |
+| Token Classification | GLiNER | Extract brands from recall and label text | In use (Phases 1, 3) |
+| Sentence Similarity / Feature Extraction | bge-m3 | Dense embeddings | In use (Phase 1) |
+| Text Ranking | bge-reranker-v2-m3 | Cross-encoder reranking (opt-in) | In use (Phase 2) |
+| Text Generation | Claude Sonnet 5 / Haiku 4.5 | Verification, advice, routing | Phase 4 |
+| Document Question Answering | Florence-2 / Donut | Parse receipts into line items | Phase 6 |
+| Image Feature Extraction | SigLIP | Visual search for photos with no legible text | Planned |
+| Automatic Speech Recognition *(stretch)* | whisper-large-v3-turbo | Voice queries | Stretch |
 
 ## Tech stack
 
@@ -79,7 +78,7 @@ flowchart TD
 | Orchestration | LangGraph ([ADR-0002](docs/adr/0002-langgraph-orchestration.md)) |
 | Data | PostgreSQL 16 + pgvector, Redis (semantic cache) |
 | Ingestion | Scheduled GitHub Actions workflow ([ADR-0005](docs/adr/0005-scheduled-ingestion-github-actions.md)) |
-| Serving | FastAPI (SSE); vLLM on Modal for GPU models |
+| Serving | FastAPI (SSE); local open models on CPU/Apple GPU ([ADR-0006](docs/adr/0006-local-open-vision-models.md)); GPU serving revisited in Phase 5 |
 | Frontend | Next.js PWA |
 | Evaluation | Custom harness, Ragas metrics, calibrated LLM-as-judge |
 | Observability | Langfuse, OpenTelemetry |
@@ -93,7 +92,7 @@ Evaluation is built alongside each capability, not after it.
 |---|---|---|
 | Identifier extraction | 160 hand-labeled recalls (100 dev, 60 held-out test) | Field-level precision, recall, F1 |
 | Retrieval | 150 known-item queries (50 dev, 100 held-out test) | Recall@k, MRR; ablation from dense to hybrid + identifiers + rerank |
-| Perception | 100+ labeled product photos | Field accuracy; crop vs no-crop |
+| Perception | 150 labeled public photos (50 dev, 100 held-out test) | Field P/R/F1; whole photo vs + regions; photo-to-recall Recall@k |
 | End to end | 300 cases incl. hard negatives (same product, different lot) | **False-negative rate**, precision, abstention rate, faithfulness |
 | Operations | Load tests | p50/p95 latency, cost per query, cache hit rate |
 
@@ -156,6 +155,33 @@ What the ablation showed, and what changed because of it:
 - **Known bias: full-text alone looks best.** Queries were written while reading their target recall, so they share its rare words, and equal-weight fusion lets dense search dilute that signal. Photo-derived queries in Phase 3 will test paraphrase robustness without that bias before fusion weights are tuned.
 - **HNSW needed no tuning yet.** pgvector's HNSW returned only `ef_search` (40) rows, silently truncating candidates, until `ef_search` was raised per query. With that fix it keeps 97.3% of the exact top-50 neighbors at 27 ms p50 against 69 ms for an exact scan. Filtered searches scan exactly, since pgvector 0.6 filters after the index scan.
 
+#### Phase 3: perception
+
+Held-out test split: 100 public photos (73 CPSC recall-notice photos, 27 Open Food Facts product photos) labeled with the identifiers legible in each ([how the set was built](evals/datasets/README.md#photos)). The pipeline reads the whole photo with Florence-2 OCR and, when enabled, each label region OWLv2 detects; it decodes barcodes (also on 2x/4x enlargements of regions), finds VINs, and feeds the text through the Phase 1 extractors. Latency is per photo on an 8 GB Apple-silicon laptop.
+
+| Field (P / R / F1) | Whole photo | **+ detected regions** (default) |
+|---|---|---|
+| Brand | 0.42 / 0.48 / 0.45 | 0.39 / 0.52 / 0.44 |
+| Model | 0.55 / 0.33 / 0.41 | 0.48 / 0.36 / 0.41 |
+| Lot / serial | 0.40 / 0.15 / 0.22 | 0.37 / 0.17 / 0.24 |
+| UPC (5 photos) | 1.00 / 0.80 / 0.89 | 0.71 / 1.00 / 0.83 |
+| Any code, kind-agnostic | 0.24 / 0.58 / 0.34 | 0.24 / **0.75** / 0.36 |
+| Latency p50 / p95 | 2.9 s / 12.6 s | 5.7 s / 23.0 s |
+
+| Photo to recall | Strict R@1 | Strict R@5 | MRR@10 | Photos with legible text (73) | Product-only photos (27) |
+|---|---|---|---|---|---|
+| Whole photo, full-OCR query | 0.37 | 0.60 | 0.46 | 0.77 | 0.15 |
+| + regions, full-OCR query | 0.42 | 0.62 | 0.51 | 0.79 | 0.15 |
+| **+ regions, focused query** (default) | 0.37 | 0.61 | 0.47 | 0.78 | 0.15 |
+
+What the evaluation showed, and what changed because of it:
+
+- **Region reading is for codes, not for finding the recall.** Reading detected regions raises kind-agnostic code recall from 0.58 to 0.75 and reaches every labeled UPC, while photo-to-recall R@5 moves only from 0.60 to 0.62. It is on by default because Phase 4 needs lot and serial codes to decide whether a specific unit is affected, and it doubles latency.
+- **Photos with nothing to read are the ceiling.** With legible text, the right recall is in the top 5 for 78% of photos; product-only photos reach 15%. Text search cannot find them; visual similarity against recall-notice images is the fix, and it cannot be measured fairly on this set because its CPSC photos are the notice images themselves.
+- **Small print stays hard.** Lot and serial recall is 0.17: CPSC notice photos are often under 500 px, Florence-2 reads at 768 x 768, and misreads such as "4315KB" for "43115BK" defeat exact matching.
+- **Dev error analysis fixed two gaps.** Recall text listing affected units by "date codes", or with linking words ("model numbers are 17249 and 17310"), produced no identifiers, so the extraction rules were extended (Phase 1 extraction results were unchanged). OCR splitting barcode digits ("6 194389 198176") was repaired, lifting dev code recall from 0.66 to 0.69.
+- **Query strategy is a near-tie.** On dev, focused queries (lookups, brands, codes and whole-photo text) tied full-OCR queries, so the shorter one became the default; an identifier-only query was worse (0.56 against 0.64 R@5) and was dropped. On the held-out split full-OCR queries rank slightly higher (R@1 0.42 against 0.37, five photos); the default was not changed after seeing test results. Long OCR text matches boilerplate in long FDA reports, which points to BM25-style length normalization in full-text ranking as the next retrieval improvement.
+
 #### Later phases
 
 | Metric | Baseline | Current |
@@ -198,6 +224,14 @@ uv run python -m recall_lens.retrieval "baby lounger suffocation" --rerank   # c
 uv run python -m recall_lens.evals.retrieval --split test --hnsw-check
 ```
 
+Find recalls from a product photo and evaluate perception (weights: Florence-2-large 1.6 GB, OWLv2 0.6 GB):
+
+```bash
+uv run python -m recall_lens.perception path/or/url/to/photo.jpg
+uv run python -m recall_lens.perception photo.jpg --no-detection   # whole photo only, about 2x faster
+uv run python -m recall_lens.evals.photos --split test              # downloads the photos once
+```
+
 Without `--since`, ingestion is incremental: each agency restarts from its last successful run minus a 30-day overlap.
 
 ## Repository layout
@@ -211,12 +245,13 @@ recall-lens/
 │   ├── ingest/            Agency connectors, idempotent store, embedding, sync CLI
 │   ├── extract/           Rule-based and GLiNER identifier extraction
 │   ├── retrieval/         Dense, IDF full-text and identifier search, fusion, reranking
+│   ├── perception/        Photo loading, OWLv2 regions, Florence-2 OCR, barcodes, VINs, photo search
 │   └── evals/             Evaluation harnesses
 ├── tests/                 Test suite (real recall records as fixtures)
 └── .github/workflows/     CI and nightly ingestion
 ```
 
-Modules for perception, agents, the API and the web client are added in the phase that introduces them; see [ROADMAP.md](ROADMAP.md).
+Modules for agents, the API and the web client are added in the phase that introduces them; see [ROADMAP.md](ROADMAP.md).
 
 ## Disclaimer
 
