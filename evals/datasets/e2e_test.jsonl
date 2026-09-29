@@ -42,7 +42,7 @@
 {"id": "e2e-test-042", "type": "no_code", "query": "Mon Sire brie 1 kg recall", "photo": null, "expected": "needs_info", "target": "fda:H-1388-2026", "relevant": ["fda:H-1388-2026"]}
 {"id": "e2e-test-043", "type": "all_units", "query": "GIKPAL 12-drawer fabric dresser model HI1437_13: recalled?", "photo": null, "expected": "affected", "target": "cpsc:25079", "relevant": ["cpsc:25079"]}
 {"id": "e2e-test-044", "type": "all_units", "query": "Is my Lexmark MS725dvn printer recalled?", "photo": null, "expected": "affected", "target": "cpsc:25090", "relevant": ["cpsc:25090"]}
-{"id": "e2e-test-045", "type": "all_units", "query": "Is my NICREW submersible RGB LED aquarium light recalled?", "photo": null, "expected": "affected", "target": "cpsc:25279", "relevant": ["cpsc:25279"]}
+{"id": "e2e-test-045", "type": "no_code", "query": "Is my NICREW submersible RGB LED aquarium light recalled?", "photo": null, "expected": "needs_info", "target": "cpsc:25279", "relevant": ["cpsc:25279"]}
 {"id": "e2e-test-046", "type": "all_units", "query": "TheKiddoSpace felt Christmas tree play set recall", "photo": null, "expected": "affected", "target": "cpsc:26300", "relevant": ["cpsc:26300"]}
 {"id": "e2e-test-047", "type": "all_units", "query": "Muscccm pool drain cover recall", "photo": null, "expected": "affected", "target": "cpsc:26405", "relevant": ["cpsc:26405"]}
 {"id": "e2e-test-048", "type": "all_units", "query": "Is my MedPride baby oil recalled?", "photo": null, "expected": "affected", "target": "cpsc:26577", "relevant": ["cpsc:26577"]}

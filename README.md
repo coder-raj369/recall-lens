@@ -6,7 +6,7 @@
 
 RecallLens is a multimodal, multi-agent system that identifies a product from a photo (or a receipt, or a voice query), extracts the identifiers that actually determine recall status (UPC, model number, lot code, best-by date, VIN), searches recalls from every major US recall authority, verifies whether *this specific unit* falls inside the recalled range, and explains the hazard and remedy with citations. When it cannot be sure, it says so.
 
-> **Status:** Phases 0–3 complete (foundations; ingestion and corpus; retrieval; perception). Phase 4 (multi-agent orchestration) next. See [ROADMAP.md](ROADMAP.md) for the phased delivery plan.
+> **Status:** Phases 0–4 complete (foundations; ingestion and corpus; retrieval; perception; multi-agent orchestration). Phase 5 (evaluation and LLMOps) next. See [ROADMAP.md](ROADMAP.md) for the phased delivery plan.
 
 ---
 
@@ -65,7 +65,7 @@ flowchart TD
 | Token Classification | GLiNER | Extract brands from recall and label text | In use (Phases 1, 3) |
 | Sentence Similarity / Feature Extraction | bge-m3 | Dense embeddings | In use (Phase 1) |
 | Text Ranking | bge-reranker-v2-m3 | Cross-encoder reranking (opt-in) | In use (Phase 2) |
-| Text Generation | Claude Sonnet 5 / Haiku 4.5 | Verification, advice, routing | Phase 4 |
+| Text Generation | Claude Opus 5.5 | Arbitrates matches the rules cannot decide; single-agent baseline | Built, off by default (billed per call) |
 | Document Question Answering | Florence-2 / Donut | Parse receipts into line items | Phase 6 |
 | Image Feature Extraction | SigLIP | Visual search for photos with no legible text | Planned |
 | Automatic Speech Recognition *(stretch)* | whisper-large-v3-turbo | Voice queries | Stretch |
@@ -93,7 +93,7 @@ Evaluation is built alongside each capability, not after it.
 | Identifier extraction | 160 hand-labeled recalls (100 dev, 60 held-out test) | Field-level precision, recall, F1 |
 | Retrieval | 150 known-item queries (50 dev, 100 held-out test) | Recall@k, MRR; ablation from dense to hybrid + identifiers + rerank |
 | Perception | 150 labeled public photos (50 dev, 100 held-out test) | Field P/R/F1; whole photo vs + regions; photo-to-recall Recall@k |
-| End to end | 300 cases incl. hard negatives (same product, different lot) | **False-negative rate**, precision, abstention rate, faithfulness |
+| End to end | 150 cases (48 dev, 102 held-out test) incl. hard negatives (same product, unlisted lot) | **False-negative rate**, unsafe answers, false alarms, abstention rate, citation accuracy |
 | Operations | Load tests | p50/p95 latency, cost per query, cache hit rate |
 
 The LLM judge is calibrated against human labels (Cohen's κ reported), and CI blocks any pull request that regresses the false-negative rate.
@@ -182,12 +182,51 @@ What the evaluation showed, and what changed because of it:
 - **Dev error analysis fixed two gaps.** Recall text listing affected units by "date codes", or with linking words ("model numbers are 17249 and 17310"), produced no identifiers, so the extraction rules were extended (Phase 1 extraction results were unchanged). OCR splitting barcode digits ("6 194389 198176") was repaired, lifting dev code recall from 0.66 to 0.69.
 - **Query strategy is a near-tie.** On dev, focused queries (lookups, brands, codes and whole-photo text) tied full-OCR queries, so the shorter one became the default; an identifier-only query was worse (0.56 against 0.64 R@5) and was dropped. On the held-out split full-OCR queries rank slightly higher (R@1 0.42 against 0.37, five photos); the default was not changed after seeing test results. Long OCR text matches boilerplate in long FDA reports, which points to BM25-style length normalization in full-text ranking as the next retrieval improvement.
 
+#### Phase 4: end to end
+
+Held-out test split: 102 cases over the 18,490-recall corpus (rebuilt for the same 2024-01-01 to 2026-09-29 window; [how the set was built](evals/datasets/README.md#end-to-end)). They cover codes a recall lists, adjacent codes it does not list (hard negatives), products without a code, all-unit recalls, vehicles inside and outside affected model years, products with no recall, brandless descriptions and photos. Every arm runs the same graph (perception, identification, hybrid retrieval of the five closest recalls, advice) and differs only in verification. Latency is per case on an 8 GB Apple-silicon laptop with bge-m3 loaded; photos reuse the Phase 3 readings.
+
+| Arm | Accuracy | False negatives | Unsafe answers | False alarms | Abstentions | Right recall cited | p50 / p95 |
+|---|---|---|---|---|---|---|---|
+| Search only: every retrieved recall is a match | 39% | 0% | 0% | 100% | 0% | 90% | 0.1 / 0.2 s |
+| Exact code match: a match only on a listed code | 56% | 38% | 61% | 9% | 0% | 100% | 0.1 / 0.2 s |
+| **Graph, rules only** (default) | **78%** | **5%** | **19%** | **3%** | 22% | **100%** | 0.1 / 0.4 s |
+| Graph + Claude arbitration | not run: LLM budget is $0 | | | | | | |
+| Single agent: Claude with a search tool | not run: LLM budget is $0 | | | | | | |
+
+False negatives are recalled units answered "not recalled" (40 cases). Unsafe answers are "not recalled" answers where the unit is or may be recalled (67 affected or needs-information cases). False alarms are "recalled" answers for units that are not (35 cases). Abstentions ask for a lot code, model year or brand. Right recall cited counts correct "recalled" answers whose cited notice is a correct one; strictly the target notice, it is 94% for the graph.
+
+| Accuracy by case type | Search only | Exact code match | **Graph** |
+|---|---|---|---|
+| Listed code, affected (16) | 100% | 100% | 94% |
+| Unlisted code, not affected (16) | 0% | 81% | 81% |
+| No code, needs information (11) | 0% | 0% | 73% |
+| All units, affected (9) | 100% | 22% | 100% |
+| Vehicle in an affected year (9) | 100% | 33% | 100% |
+| Vehicle year no recall covers (9) | 0% | 100% | 67% |
+| Vehicle without a year (4) | 0% | 0% | 100% |
+| Product with no recall (10) | 0% | 100% | 100% |
+| Brandless description (6) | 0% | 0% | 0% |
+| Photo (12) | 50% | 33% | 50% |
+
+What the evaluation showed:
+
+- **Retrieval is not an answer.** Search alone never misses a recall because it calls everything recalled, including all 16 hard negatives and all 10 products with no recall.
+- **Exact matching looks safe but misses.** Matching listed codes handles the hard negatives but misses 38% of recalled units, because all-unit recalls and vehicles have no code to match.
+- **Deterministic verification gets both sides.** The graph misses 2 of 40 recalled units, both photos whose recall perception did not find, with 1 false alarm in 35. Every correct "recalled" answer cites a correct notice.
+- **The remaining risk is missing identity, not wrong ranges.** 13 answers said "not recalled" where the right answer was to ask: 6 brandless descriptions ("space heater") the rules cannot tie to a recall, 2 products whose brand was never extracted from the notice (Benzaderm, Lillie's Q) and 5 photos without a legible brand or code. This is the case Claude arbitration exists for; it is built and tested against a mocked API, and it stays off until there is an LLM budget.
+- **Brand-only identity is too loose.** A brand match lets unrelated recalls of the same brand answer. A Kirkland poke recall counted as covering Kirkland smoked salmon because the word "is" overlapped with its title, and a serial range for the FitRx SmartBell matched a SmartBell XL serial, the only false alarm. Both were found on the test split, so they will be fixed and measured in Phase 5 rather than tuned here.
+- **Building the set caught two false "not affected" paths before anything was measured.** Code lists that continue in an attachment, and lot codes that extraction missed, could rule a unit out; both now abstain or match instead.
+- **One label was corrected after the first run.** An audit of all 54 unlisted-code, no-code and all-unit cases, using checks independent of the verifier, found a notice limited to one model queried without the model; its outcome is needs-information, which the graph had answered. Before the correction, graph accuracy was 77%.
+
+The API serves the same graph: `POST /checks` streams each step as a server-sent event and pauses for a clearer photo with a LangGraph interrupt, which resumes after a restart through Postgres checkpoints.
+
 #### Later phases
 
 | Metric | Baseline | Current |
 |---|---|---|
-| End-to-end false-negative rate | — | — |
-| p95 latency | — | — |
+| End-to-end false-negative rate | 38% (exact code match) | 5% (graph, rules only) |
+| p95 latency under load | — | — |
 | Cost per query | — | — |
 
 ## Getting started
@@ -232,6 +271,16 @@ uv run python -m recall_lens.perception photo.jpg --no-detection   # whole photo
 uv run python -m recall_lens.evals.photos --split test              # downloads the photos once
 ```
 
+Check a product end to end (the Phase 4 graph) and evaluate it:
+
+```bash
+uv run uvicorn recall_lens.api:app                  # POST /checks streams progress as server-sent events
+curl -N localhost:8000/checks -H 'content-type: application/json' -d '{"query": "CAREone antacid lot 1276118"}'
+uv run python -m recall_lens.evals.e2e --split test  # the graph against search-only and exact-match baselines
+```
+
+Photos are sent base64-encoded as `"photo"`; a check paused for a clearer photo resumes with `POST /checks/{id}/resume`. Claude arbitration and the single-agent baseline stay off unless `RECALL_LENS_ARBITRATE=1` is set with `uv sync --group llm` and an Anthropic API key, because every call is billed.
+
 Without `--since`, ingestion is incremental: each agency restarts from its last successful run minus a 30-day overlap.
 
 ## Repository layout
@@ -246,12 +295,14 @@ recall-lens/
 │   ├── extract/           Rule-based and GLiNER identifier extraction
 │   ├── retrieval/         Dense, IDF full-text and identifier search, fusion, reranking
 │   ├── perception/        Photo loading, OWLv2 regions, Florence-2 OCR, barcodes, VINs, photo search
+│   ├── agents/            LangGraph state and nodes, rule verifier, Claude arbitration, single-agent baseline
+│   ├── api.py             FastAPI app streaming checks as server-sent events
 │   └── evals/             Evaluation harnesses
 ├── tests/                 Test suite (real recall records as fixtures)
 └── .github/workflows/     CI and nightly ingestion
 ```
 
-Modules for agents, the API and the web client are added in the phase that introduces them; see [ROADMAP.md](ROADMAP.md).
+The web client is added in Phase 6; see [ROADMAP.md](ROADMAP.md).
 
 ## Disclaimer
 

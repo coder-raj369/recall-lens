@@ -10,7 +10,7 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 | [1](#phase-1--ingestion-and-corpus) | 2–3 | Ingestion and corpus | Complete |
 | [2](#phase-2--retrieval) | 3–4 | Retrieval | Complete |
 | [3](#phase-3--perception) | 5–6 | Perception | Complete |
-| [4](#phase-4--multi-agent-orchestration) | 7–8 | Multi-agent orchestration | Planned |
+| [4](#phase-4--multi-agent-orchestration) | 7–8 | Multi-agent orchestration | Complete |
 | [5](#phase-5--evaluation-and-llmops) | 9–10 | Evaluation and LLMOps | Planned |
 | [6](#phase-6--product-and-launch) | 11–12 | Product and launch | Planned |
 
@@ -123,21 +123,21 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 **Exit criteria**
 - End-to-end flow served over an SSE endpoint.
 - End-to-end gold set with hard negatives (same product, different lot).
-- Multi-agent graph compared against a single-agent baseline.
+- Multi-agent graph compared against baselines. The non-LLM baselines are measured. The Claude single-agent baseline and Claude arbitration are built and tested against a mocked API, but not run while the LLM budget is $0.
 
-**Planned commits**
-- [ ] `feat(agents): define graph state and LangGraph skeleton`
-- [ ] `feat(agents): add perception and identifier nodes`
-- [ ] `feat(agents): add retrieval node`
-- [ ] `feat(agents): verify lot, date and model ranges deterministically`
-- [ ] `feat(agents): arbitrate fuzzy matches with an LLM and emit confidence`
-- [ ] `feat(agents): enforce citations and abstain below confidence threshold`
-- [ ] `feat(agents): interrupt to request a better photo when unreadable`
-- [ ] `feat(agents): checkpoint graph state in Postgres`
-- [ ] `feat(api): stream graph progress over server-sent events`
-- [ ] `feat(evals): add end-to-end gold set with hard negatives`
-- [ ] `feat(evals): compare against a single-agent baseline`
-- [ ] `docs: publish Phase 4 end-to-end results`
+**Commits** (revised during the phase: the LLM steps target Claude Opus 5.5 and are off by default at a $0 budget; building the gold set exposed two ways a unit could be ruled out against an incomplete code list, fixed before measuring; as in Phase 3, the comparison and the published results are one commit)
+- [x] `feat(agents): define graph state and LangGraph skeleton`
+- [x] `feat(agents): add perception and identifier nodes`
+- [x] `feat(agents): add retrieval node`
+- [x] `feat(agents): verify lot, date and model ranges deterministically`
+- [x] `feat(agents): arbitrate undetermined candidates with Claude, off by default`
+- [x] `feat(agents): cite recalls in the answer and abstain below a confidence threshold`
+- [x] `feat(agents): interrupt to request a better photo when unreadable`
+- [x] `feat(agents): checkpoint graph state in Postgres`
+- [x] `feat(api): stream graph progress over server-sent events`
+- [x] `fix(agents): never rule a unit out against an incomplete code list`
+- [x] `feat(evals): add end-to-end gold set with hard negatives`
+- [x] `feat(evals): compare the graph with baselines and publish Phase 4 results`
 
 ---
 
