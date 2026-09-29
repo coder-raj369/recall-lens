@@ -4,7 +4,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 from recall_lens.agents import nodes as agent_nodes
-from recall_lens.agents.graph import Nodes, build
+from recall_lens.agents.graph import Nodes, build, postgres_checkpointer
 from recall_lens.agents.state import AFFECTED, UNDETERMINED
 
 
@@ -95,3 +95,16 @@ def test_without_a_person_an_unreadable_photo_falls_back_to_the_description():
     nodes, visited = photo_nodes(retake=False)
     run(nodes, {"query": "Acme heater", "photo": "blurry.jpg"})
     assert visited == ["perceive", "identify", "retrieve", "verify", "advise"]
+
+
+def test_a_paused_check_resumes_after_a_restart_from_postgres(database_url):
+    nodes, visited = photo_nodes()
+    config = {"configurable": {"thread_id": "check-1"}}
+    with postgres_checkpointer(database_url) as saver:
+        build(nodes, checkpointer=saver).invoke({"query": "", "photo": "blurry.jpg"}, config)
+    with postgres_checkpointer(database_url) as saver:  # a new connection, as after a restart
+        graph = build(nodes, checkpointer=saver)
+        assert graph.get_state(config).next == ("retake",)
+        result = graph.invoke(Command(resume={"photo": "sharp.jpg"}), config)
+    assert result["answer"] == {"verdict": AFFECTED}
+    assert visited == ["perceive", "perceive", "identify", "retrieve", "verify", "advise"]

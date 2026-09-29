@@ -9,9 +9,11 @@ undetermined (ADR-0003). Nodes are plain functions taking the state and returnin
 update, injected so the topology can be tested on its own.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 
+from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
 
 from recall_lens.agents.state import UNDETERMINED, CheckState
@@ -68,3 +70,12 @@ def build(nodes: Nodes, checkpointer=None):
     graph.add_conditional_edges("verify", after_verify, targets)
     graph.add_edge("advise", END)
     return graph.compile(checkpointer=checkpointer)
+
+
+@contextmanager
+def postgres_checkpointer(url: str) -> Iterator[PostgresSaver]:
+    """Checkpoints in the recall database, so a paused check survives a restart (ADR-0002)."""
+    # ponytail: one connection behind a lock; use a psycopg_pool pool once checks run in parallel.
+    with PostgresSaver.from_conn_string(url) as saver:
+        saver.setup()  # creates or migrates LangGraph's own tables; safe to repeat
+        yield saver
