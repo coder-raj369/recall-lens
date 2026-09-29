@@ -44,3 +44,26 @@ Each record has the `target` recall and the full `relevant` set, built by fixed 
 - **Code and equipment queries**: every recall whose text contains a code that appears both in the target and as a whole token in the query (word-boundary match; UPCs match on digits).
 
 Most queries have exactly one relevant recall (97 of 150). Large FDA events make the relevant set lenient for a few queries (up to 116 recalls), so results are reported both **strict** (the target only) and **lenient** (any relevant recall). Status: **v0**, written by the project author; queries were not paraphrased or reviewed by a second person.
+
+## Photos
+
+| File | Photos | Purpose |
+|---|---|---|
+| `photos_dev.jsonl` | 50 (37 CPSC, 13 food) | Tuning and error analysis |
+| `photos_test.jsonl` | 100 (73 CPSC, 27 food) | Held-out evaluation |
+
+Only URLs and labels are stored; images are downloaded when an evaluation runs and are not redistributed.
+
+- **CPSC** (110): one photo per recall from 2024 onward, sampled with a fixed seed from recall-notice images whose caption mentions a model, lot, batch, UPC, serial, date code, item number or SKU. They are published on cpsc.gov with each recall notice; some are supplied by the recalling firm. Many are product shots or low-resolution crops, which is realistic.
+- **Food** (40): for FDA food recalls whose UPC appears in [Open Food Facts](https://world.openfoodfacts.org/), the product's first uploaded photo (usually the front of the pack). Open Food Facts images are contributed under CC BY-SA.
+
+Each record has the photo `url`, the `target` recall, the `relevant` recalls (for food, every recall listing that UPC, compared without leading zeros) and the `gold` identifiers **legible in the photo**:
+
+- **brand**: the product's brand mark; the manufacturer or distributor only when no brand mark is shown. Retail sellers are excluded unless they are the brand.
+- **model**: model, item, SKU, style and part numbers containing a digit. Placeholder text such as "XXXXX" is excluded.
+- **lot**: lot, batch, serial, production and date codes that identify units, except plain dates.
+- **upc**: digits printed under a barcode, or, when a complete barcode is in frame but its digits are cut off, the product's Open Food Facts code (a decoder can still read the bars).
+- **vin**: vehicle identification numbers.
+- Text too small or blurred for a person to read at the published resolution is not labeled; 38 photos have no legible identifier at all (86 show no code), which tests that the pipeline returns nothing rather than guessing.
+
+Status: **v0**, labeled by the project author by viewing each photo.
