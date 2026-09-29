@@ -48,6 +48,21 @@ def test_perceive_reads_the_photo_and_builds_a_focused_query(monkeypatch):
     assert update["photo_query"].startswith("KICHLER LIGHTING LLC 29F2369A-108184 43115BK")
 
 
+def test_perceive_reports_photos_it_cannot_use(monkeypatch):
+    pytest.importorskip("PIL")
+    import recall_lens.perception as perception
+
+    monkeypatch.setattr(perception, "release_models", lambda: None)
+
+    def missing(photo):
+        raise FileNotFoundError(photo)
+
+    blank = Reading(texts=("",), identifiers=frozenset(), codes=frozenset())
+    for read, error in [(missing, "could not be opened"), (lambda photo: blank, "No text")]:
+        update = nodes.perceive(nodes.Services(read_photo=read))({"photo": "label.jpg"})
+        assert list(update) == ["photo_error"] and error in update["photo_error"]
+
+
 def test_retrieve_passes_codes_and_returns_plain_candidates(conn):
     from datetime import date
     from functools import partial
@@ -179,6 +194,11 @@ def test_advise_cites_the_recall_with_its_hazard_and_remedy(conn):
         "Remedy: Stop using it; get a refund.",
         "https://cpsc.gov/1",
     ]
+    unread = nodes.advise(services)({**state, "photo_error": "The photo could not be opened."})
+    assert (
+        "The photo could not be opened. This answer uses your description only."
+        in (unread["answer"]["message"])
+    )
     state["verdicts"] = [verdict(1, UNDETERMINED, reason="Nothing ties it.")]
     assert nodes.advise(services)(state)["answer"] == {
         "verdict": NO_MATCH,

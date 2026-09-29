@@ -33,6 +33,7 @@ class CheckState(TypedDict, total=False):
     photo: str | None  # path or URL of a product photo
     photo_text: str  # text read from the photo
     photo_query: str  # focused search text for the photo (lookups, brands, codes, large print)
+    photo_error: str | None  # why the photo could not be used, shown to the person
     identifiers: list[list[str]]  # [kind, value] pairs from the query and the photo
     codes: list[str]  # every code-like value, kind unknown
     text: str  # everything the user said or showed, for checking against a recall's scope

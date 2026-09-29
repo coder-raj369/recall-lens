@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import psycopg
+from langgraph.types import interrupt
 
 from recall_lens.agents import verify as rules_verifier
 from recall_lens.agents.state import AFFECTED, NEEDS_INFO, NO_MATCH, NOT_AFFECTED, CheckState
@@ -37,17 +38,36 @@ def perceive(services: Services):
         from recall_lens.perception import release_models
         from recall_lens.perception.recalls import build_query
 
-        reading = services.read_photo(state["photo"])
-        photo_query = build_query(reading, lookups=services.lookups)
-        release_models()  # retrieval loads bge-m3 next; together they overflow 8 GB
+        try:
+            reading = services.read_photo(state["photo"])
+        except OSError:  # missing file, not an image, failed download
+            return {"photo_error": "The photo could not be opened."}
+        finally:
+            release_models()  # retrieval loads bge-m3 next; together they overflow 8 GB
+        if not (reading.text.strip() or reading.codes):
+            return {"photo_error": "No text could be read from the photo."}
         return {
             "photo_text": normalize(reading.text),
-            "photo_query": photo_query,
+            "photo_query": build_query(reading, lookups=services.lookups),
             "identifiers": sorted([k, v] for k, v in reading.identifiers),
             "codes": sorted(reading.codes),
+            "photo_error": None,
         }
 
     return run
+
+
+RETAKE = (
+    "We could not read the photo. Retake it closer to the label, with any lot, model or date "
+    "code in focus, or describe the product."
+)
+
+
+def retake(state: CheckState) -> dict:
+    """Wait for a new photo or a description; resume with {"photo": ...} or {"query": ...}."""
+    reply = interrupt({"question": RETAKE, "reason": state["photo_error"]}) or {}
+    query = " ".join(filter(None, [state.get("query"), reply.get("query")]))
+    return {"photo": reply.get("photo"), "query": query}
 
 
 def identify(services: Services):
@@ -177,6 +197,8 @@ def advise(services: Services):
                 ).fetchone()
                 lines += [hazard and f"Hazard: {hazard}", remedy and f"Remedy: {remedy}"]
             lines += [top["source_url"]]
+        if state.get("photo_error"):
+            lines += [f"{state['photo_error']} This answer uses your description only."]
         if candidates and verdict in (NOT_AFFECTED, NO_MATCH):
             n = len(candidates)
             closest = f"the {n} closest recalls" if n > 1 else "the closest recall"
