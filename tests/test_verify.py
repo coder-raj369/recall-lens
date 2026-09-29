@@ -74,6 +74,24 @@ BED_RAILS = parse_scope(
     [("brand", "ELENKER"), ("model", "HFK-5115"), ("model", "HFK-5116"),
      ("model", "K90002C1"), ("model", "K90001C1")],
 )  # fmt: skip
+SAXAGLIPTIN = parse_scope(
+    "Saxagliptin Tablets, USP, 2.5mg, Glenmark",
+    "Codes: 30-Count Bottle Lots: 17241788, exp. date Sep-26 17241821, exp. date Sep-26 "
+    "17241822, exp. date Sep-26",
+    [("lot", "17241788"), ("lot", "17241822"), ("brand", "GLENMARK")],  # extraction missed one
+)
+KITS_LIST = parse_scope(
+    "Medline Convenience Kits",
+    "Medline Kits labeled as CH OPEN HEART, ADULT CARDIAC KIT, Etc. (see recall documents for a "
+    "full list of products) Codes: Medline Kit Number/SKU DYNJ04879M, DYNJ04893I",
+    [("brand", "MEDLINE"), ("model", "DYNJ04879M"), ("model", "DYNJ04893I")],
+)
+PUMP_UNIT = parse_scope(
+    "Power Unit",
+    "Codes: Lot Code: US Model No 107760; UDI-DI 05415067038258, "
+    "For Lot Numbers, see Attachment F.",
+    [("model", "107760"), ("upc", "05415067038258")],
+)
 
 
 @pytest.mark.parametrize(
@@ -114,6 +132,15 @@ BED_RAILS = parse_scope(
         # A code labeled as a model is not compared with lots; a short lot alone needs the brand.
         (ANTACID, "Huffy ride-on, model 1276118", UNDETERMINED),
         (parse_scope("Pump kit", "Lot 17249", [("lot", "17249")]), "ride-on toy 17249", NEEDS_INFO),
+        # Code lists that continue in an attachment or elsewhere cannot rule a unit out.
+        (KITS_LIST, "Medline kit number DYNJ04879M", AFFECTED),
+        (KITS_LIST, "Medline kit number DYNJ09999Z", NEEDS_INFO),
+        (PUMP_UNIT, "power unit model 107760, lot 22A0417", NEEDS_INFO),
+        (DUMBBELLS, "Acme dumbbell serial KK23400000", NOT_AFFECTED),  # a complete list still can
+        # A code the notice prints counts even when extraction missed it.
+        (SAXAGLIPTIN, "Glenmark saxagliptin 2.5 mg, lot 17241821", AFFECTED),
+        (SAXAGLIPTIN, "Glenmark saxagliptin 2.5 mg, lot 17241830", NOT_AFFECTED),
+        (BED_RAILS, "ELENKER bed rail model HFK-5115", AFFECTED),
     ],
 )
 def test_verdicts(scope, text, expected):

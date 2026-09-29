@@ -48,6 +48,14 @@ _WINDOW = re.compile(
 _USER_DATE = re.compile(
     rf"(?P<label>{_EXPIRY}|{_PRODUCTION})\b\s*(?:date)?\s*[:#-]?\s*(?P<date>{_DATE})", re.I
 )
+# Wording that says the notice's code list continues elsewhere ("For Lot Numbers, see Attachment
+# F", "see recall documents for a full list"). An unlisted code then proves nothing. Some matches
+# are about distribution lists instead, which costs an abstention, never a false "not affected".
+_INCOMPLETE = re.compile(
+    r"see\s+(?:the\s+)?(?:attach\w*|enclosed|recall\s+(?:documents?|report)|appendix)"
+    r"|attachment\s+[A-Z0-9]\b|(?:full|complete)\s+list|not\s+limited\s+to|\b(?:and|&)\s+others\b",
+    re.IGNORECASE,
+)
 # "All lots" with no date or distribution qualifier; "all lots within expiry" still means all.
 _ALL_UNITS = re.compile(
     r"\ball\s+(?:lots|lot numbers|serial numbers|units|codes|sizes|batches|model numbers)\b"
@@ -111,6 +119,7 @@ class Scope:
     vehicles: tuple[Vehicle, ...] = ()
     all_units: bool = False
     open_ranges: tuple[str, ...] = ()  # range phrases that could not be read numerically
+    incomplete: str | None = None  # wording that says the code list continues elsewhere
 
 
 @dataclass(frozen=True)
@@ -176,6 +185,7 @@ def parse_scope(title: str, text: str, identifiers: list[tuple[str, str]], affec
         vehicles=tuple(vehicles),
         all_units=bool(_ALL_UNITS.search(text)),
         open_ranges=tuple(open_ranges),
+        incomplete=(m := _INCOMPLETE.search(text)) and m.group(),
     )
 
 
@@ -238,6 +248,13 @@ def _user_dates(facts: Facts) -> list[tuple[str, date]]:
     return found
 
 
+def _mentioned(code: str, text: str) -> bool:
+    """Whether the notice prints code as a whole token; extraction can miss list entries."""
+    if len(code) < 5 or _YEAR.fullmatch(code):
+        return False
+    return re.search(rf"(?<![A-Z0-9]){re.escape(code)}(?![A-Z0-9])", text, re.I) is not None
+
+
 def _distinctive(kind: str, code: str) -> bool:
     """Codes unlikely to match an unrelated recall by coincidence."""
     if kind in ("upc", "ndc", "vin"):
@@ -258,7 +275,15 @@ def verify(scope: Scope, facts: Facts) -> tuple[str, str, str | None]:
     unit_scoped = bool(
         any(listed[k] for k in UNIT_KINDS) or scope.ranges or scope.windows or scope.open_ranges
     )
+
+    def mentioned(codes) -> set[str]:
+        return {_key(code) for code in codes if _mentioned(code, scope.text)}
+
+    # A code printed in the notice counts even when extraction missed it, unless the notice
+    # lists it as another kind; only a label makes a printed code the person's lot.
+    unit_listed = set().union(*(listed[kind] for kind in UNIT_KINDS))
     model_hits = listed["model"] & set(usable("model"))
+    model_hits |= mentioned(usable("model").values()) - unit_listed
     vehicle_years = any(v.years for v in scope.vehicles)
     brand = _brand_match(scope, facts)
 
@@ -267,7 +292,10 @@ def verify(scope: Scope, facts: Facts) -> tuple[str, str, str | None]:
     #    also needs the brand or model to match, or the match may be a coincidence.
     for kind in UNIT_KINDS:
         user = usable(kind)
-        for key in sorted(listed[kind] & set(user)):
+        hits = listed[kind] & set(user)
+        if kind == "lot":
+            hits |= mentioned(facts.typed.get("lot", ())) & set(user)
+        for key in sorted(hits):
             code, evidence = user[key], _sentence(scope.text, user[key])
             if _distinctive(kind, code) or brand or model_hits:
                 return AFFECTED, f"{kind.upper()} {code} is listed in this recall.", evidence
@@ -347,6 +375,10 @@ def verify(scope: Scope, facts: Facts) -> tuple[str, str, str | None]:
         phrase = scope.open_ranges[0]
         reason = f'This recall covers a range of codes ("{phrase}") that must be checked by hand.'
         return NEEDS_INFO, reason, _sentence(scope.text, phrase)
+    if scope.incomplete and facts.codes:
+        phrase = scope.incomplete
+        reason = f'This notice lists more codes elsewhere ("{phrase}"); check the full notice.'
+        return NEEDS_INFO, reason, _sentence(scope.text, phrase)
     for kind in ("lot", "model", "upc", "ndc"):
         signatures = {_signature(v) for v in scope.codes.get(kind, ())}
         if kind == "lot":
@@ -356,7 +388,7 @@ def verify(scope: Scope, facts: Facts) -> tuple[str, str, str | None]:
         # A bare all-digit code could be a lot or a model; only a label settles its kind.
         inferred = {c for c in facts.codes if _signature(c) in signatures and not c.isdigit()}
         for code in sorted(facts.typed.get(kind, frozenset()) | inferred):
-            if _key(code) not in listed[kind]:
+            if _key(code) not in listed[kind] and not _mentioned(code, scope.text):
                 return (
                     NOT_AFFECTED,
                     f"{kind.upper()} {code} is not among the ones this recall lists.",
