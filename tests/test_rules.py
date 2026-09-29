@@ -78,6 +78,14 @@ CASES = [
         {("lot", "335314"), ("lot", "335315")},
     ),
     (
+        "The model numbers are 17249 and 17310 with date codes between 16919 and 11122",
+        {("model", "17249"), ("model", "17310"), ("lot", "16919"), ("lot", "11122")},
+    ),
+    (
+        "subject to this recall have the following date codes: 1752VE01, 1782VE01, 0583VE01",
+        {("lot", "1752VE01"), ("lot", "1782VE01"), ("lot", "0583VE01")},
+    ),
+    (
         "Serial Numbers: A2013401, A2013402. Expiration: 2031Dec17",
         {("lot", "A2013401"), ("lot", "A2013402")},
     ),

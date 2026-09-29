@@ -14,7 +14,10 @@ MAX_PER_KIND = 1_000
 
 _NUMBER_SUFFIX = r"(?:\s*(?:#|no\.?|nos\.?|numbers?|codes?))?"
 _LABELS = {
-    "lot": rf"lots?{_NUMBER_SUFFIX}|batch(?:es)?{_NUMBER_SUFFIX}|serial{_NUMBER_SUFFIX}",
+    "lot": (
+        rf"lots?{_NUMBER_SUFFIX}|batch(?:es)?{_NUMBER_SUFFIX}|serial{_NUMBER_SUFFIX}"
+        r"|(?:date|production|manufactur(?:e|ing)(?:\s+date)?)\s+codes?"
+    ),
     "model": (
         rf"models?{_NUMBER_SUFFIX}|ref\.?{_NUMBER_SUFFIX}|cat(?:alog)?\.?\s*(?:#|no\.?|numbers?)"
         r"|(?:part|material|item)\s*(?:#|no\.?|numbers?)"
@@ -35,6 +38,9 @@ _SKIPPABLE = re.compile(
     re.IGNORECASE,
 )
 _NUMERIC_RANGE = re.compile(r"^(\d+)-(\d+)$")
+# Words that may sit between a label and its first code: "model numbers are 17249 and 17310",
+# "date codes include 1752VE01".
+_LINK = re.compile(r"(?:is|are|include[sd]?|including|the following|between)\b", re.IGNORECASE)
 _CODE = re.compile(r"[A-Z0-9][A-Z0-9+\-._]*[A-Z0-9]|[0-9]", re.IGNORECASE)
 _DIGIT_RUN = re.compile(r"\d[\d -]{6,18}\d")
 _NDC = re.compile(r"(?<![\w-])\d{4,5}-\d{3,4}-\d{1,2}(?![\w-])")
@@ -49,6 +55,9 @@ def _codes_after(text: str, start: int) -> list[str]:
     while pos < len(text):
         if sep := _SEPARATOR.match(text, pos) or _SKIPPABLE.match(text, pos):
             pos = sep.end()
+            continue
+        if not codes and (link := _LINK.match(text, pos)):
+            pos = link.end()
             continue
         token = _CODE.match(text, pos)
         if not token or _LIST_MARKER.match(text, pos):
