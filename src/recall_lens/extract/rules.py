@@ -90,3 +90,31 @@ def extract(text: str | None) -> set[Identifier]:
         for value in values[:MAX_PER_KIND]
         if (ident := identifier(kind, value))
     }
+
+
+MIN_BARE_CODE = 5  # unlabeled tokens shorter than this ("F1", "4x4") are too ambiguous
+_TOKEN = re.compile(r"[A-Z0-9][A-Z0-9+\-./_]*[A-Z0-9]", re.IGNORECASE)
+_YEAR = re.compile(r"^(?:19|20)\d{2}$")
+# Phone numbers, ZIP+4 codes and address ordinals look like codes on labels and packaging.
+_NOT_A_CODE = re.compile(
+    r"^(?:\d{3}-\d{4}|\d{3}-\d{3}-\d{4}|\d{5}-\d{4}|\d+(?:ST|ND|RD|TH))$", re.I
+)
+
+
+def codes(text: str) -> set[str]:
+    """Code values in free text: labeled codes plus bare code-like tokens, kind unknown.
+
+    Used for search queries and photo text, where "CBR600RR" or a stamped "0863VE01" carries
+    no label. Tokens shorter than five characters, without a digit, or that are years are skipped.
+    """
+    values = {value for _, value in extract(text)}
+    labeled = " ".join(values)
+    for token in _TOKEN.findall(text):
+        if len(token) < MIN_BARE_CODE or not any(c.isdigit() for c in token):
+            continue
+        if _YEAR.match(token) or _NOT_A_CODE.match(token):
+            continue
+        if token.isdigit() and token in labeled:  # a digit group of a spaced, labeled UPC
+            continue
+        values.add(token.upper())
+    return values

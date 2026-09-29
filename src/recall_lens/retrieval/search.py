@@ -4,7 +4,6 @@ with reciprocal rank fusion and reranked by a cross-encoder.
 Primitives return recall IDs, best match first; `search` combines them and returns Hits.
 """
 
-import re
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -24,9 +23,6 @@ RERANK_CANDIDATES = 30
 RERANK_TEXT_CHARS = 2_000  # the cross-encoder reads ~512 tokens
 
 CODE_KINDS = ["upc", "ndc", "model", "lot"]  # brands and years are too broad to short-circuit
-MIN_BARE_CODE = 5  # unlabeled tokens shorter than this ("F1", "4x4") are too ambiguous
-_TOKEN = re.compile(r"[A-Z0-9][A-Z0-9+\-./_]*[A-Z0-9]", re.IGNORECASE)
-_YEAR = re.compile(r"^(?:19|20)\d{2}$")
 
 Embedder = Callable[[Sequence[str]], Sequence[Sequence[float]]]
 
@@ -135,24 +131,11 @@ def lexical(
     return [row[0] for row in rows]
 
 
-def query_codes(query: str) -> set[str]:
-    """Identifier values a query may contain: labeled codes plus bare code-like tokens."""
-    values = {value for _, value in rules.extract(query)}
-    labeled = " ".join(values)
-    for token in _TOKEN.findall(query):
-        if len(token) < MIN_BARE_CODE or not any(c.isdigit() for c in token) or _YEAR.match(token):
-            continue
-        if token.isdigit() and token in labeled:  # a digit group of a spaced, labeled UPC
-            continue
-        values.add(token.upper())
-    return values
-
-
 def identifier_matches(
     conn: psycopg.Connection, query: str, filters: Filters = NO_FILTERS, limit: int = 50
 ) -> dict[int, int]:
     """Recalls whose stored identifiers exactly match codes in the query, with match counts."""
-    codes = query_codes(query)
+    codes = rules.codes(query)
     if not codes:
         return {}
     where, params = filters.sql()

@@ -138,13 +138,6 @@ def test_filters_apply_to_dense_and_lexical(conn, corpus):
     assert corpus["26532"] in search.lexical(conn, "heater fire", filters=in_2026)
 
 
-def test_query_codes_take_labeled_and_bare_codes_but_skip_years_and_short_tokens():
-    assert search.query_codes("Lot #: 82886 buprenorphine") == {"82886"}
-    assert search.query_codes("2023 Honda CBR600RR engine") == {"CBR600RR"}
-    assert search.query_codes("upc 0 12345 67890 5") == {"012345678905"}
-    assert search.query_codes("F1 4x4 truck") == set()
-
-
 def test_exact_identifier_matches_come_first(conn, corpus):
     def embed_towards_heater(texts):
         return [one_hot(0) for _ in texts]

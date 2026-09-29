@@ -1,6 +1,6 @@
 import pytest
 
-from recall_lens.extract.rules import extract
+from recall_lens.extract.rules import codes, extract
 
 # Snippets taken from real CPSC and openFDA recall text.
 CASES = [
@@ -92,3 +92,11 @@ def test_extracts_labeled_identifiers(text, expected):
 def test_handles_empty_text():
     assert extract(None) == set()
     assert extract("") == set()
+
+
+def test_codes_take_labeled_and_bare_codes_but_skip_years_and_short_tokens():
+    assert codes("Lot #: 82886 buprenorphine") == {"82886"}
+    assert codes("2023 Honda CBR600RR engine") == {"CBR600RR"}
+    assert codes("upc 0 12345 67890 5") == {"012345678905"}
+    assert codes("F1 4x4 truck") == set()
+    assert codes("Tel +1 (818) 818-0538, Seatac WA 98188-9993, 3715 S 182ND St") == set()
