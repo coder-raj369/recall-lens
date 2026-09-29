@@ -5,10 +5,12 @@ Requires the optional `ml` dependency group.
 
 from dataclasses import dataclass
 from functools import cache
-
-from PIL import Image
+from typing import TYPE_CHECKING
 
 from recall_lens.perception import torch_device
+
+if TYPE_CHECKING:  # Pillow is in the optional ml group; box logic must import without it
+    from PIL import Image
 
 MODEL_ID = "google/owlv2-base-patch16-ensemble"
 QUERIES = (
@@ -60,7 +62,7 @@ def suppress(regions: list[Region], max_iou: float = NMS_IOU) -> list[Region]:
 
 
 def detect(
-    image: Image.Image, threshold: float = THRESHOLD, max_regions: int = MAX_REGIONS
+    image: "Image.Image", threshold: float = THRESHOLD, max_regions: int = MAX_REGIONS
 ) -> list[Region]:
     """Most confident, non-overlapping label-like regions in the image."""
     import torch

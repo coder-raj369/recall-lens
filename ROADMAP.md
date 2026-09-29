@@ -112,6 +112,7 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 - [x] `feat(perception): find recalls from a product photo`
 - [x] `fix(perception): join barcode digit groups that OCR splits apart`
 - [x] `feat(evals): add photo evaluation harness and publish Phase 3 results`
+- [x] `fix(perception): let detection unit tests run without Pillow`
 
 ---
 
