@@ -45,3 +45,31 @@ def test_perceive_reads_the_photo_and_builds_a_focused_query(monkeypatch):
     assert update["identifiers"] == [["brand", "KICHLER LIGHTING LLC"], ["model", "43115BK"]]
     assert update["codes"] == ["29F2369A-108184", "43115BK"]
     assert update["photo_query"].startswith("KICHLER LIGHTING LLC 29F2369A-108184 43115BK")
+
+
+def test_retrieve_passes_codes_and_returns_plain_candidates(conn):
+    from datetime import date
+    from functools import partial
+
+    from recall_lens.ingest import store
+    from recall_lens.ingest.models import Recall
+
+    recall = Recall(
+        agency="cpsc", source_id="26532", title="Vornado Recalls Tower Heaters",
+        hazard="Fire hazard", recall_date=date(2026, 6, 4), raw={},
+        identifiers=frozenset({("model", "SRTH-1")}),
+    )  # fmt: skip
+    store.upsert(conn, recall)
+    conn.commit()
+    no_vectors = partial(nodes.retrieval.search, use_dense=False)
+    services = nodes.Services(conn=conn, search=no_vectors)
+    update = nodes.retrieve(services)({"search_text": "unrelated words", "codes": ["SRTH-1"]})
+    assert [c["source_id"] for c in update["candidates"]] == ["26532"]
+    assert set(update["candidates"][0]) == {
+        "recall_id",
+        "agency",
+        "source_id",
+        "title",
+        "source_url",
+    }
+    assert nodes.retrieve(services)({"search_text": "", "codes": []}) == {"candidates": []}
