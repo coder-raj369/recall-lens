@@ -29,8 +29,11 @@ class Verdict(TypedDict):
 class CheckState(TypedDict, total=False):
     query: str  # what the user typed; may be empty when a photo is given
     photo: str | None  # path or URL of a product photo
+    photo_text: str  # text read from the photo
+    photo_query: str  # focused search text for the photo (lookups, brands, codes, large print)
     identifiers: list[list[str]]  # [kind, value] pairs from the query and the photo
     codes: list[str]  # every code-like value, kind unknown
+    text: str  # everything the user said or showed, for checking against a recall's scope
     search_text: str  # query sent to retrieval
     candidates: list[Candidate]
     verdicts: list[Verdict]

@@ -5,12 +5,14 @@ Requires the optional `ml` dependency group.
 
 import re
 from dataclasses import dataclass
-
-from PIL import Image
+from typing import TYPE_CHECKING
 
 from recall_lens.extract import rules
 from recall_lens.ingest.models import Identifier
 from recall_lens.perception import vin
+
+if TYPE_CHECKING:  # Pillow is in the optional ml group; Reading must import without it
+    from PIL import Image
 
 # OCR spacing artifacts that break labeled-code rules: "Model No .: S-Y608", "T30 -F".
 BARCODE_SCALES = (1, 2, 4)
@@ -40,8 +42,10 @@ def normalize(text: str) -> str:
     return _SPACED_HYPHEN.sub("-", _SPACE_BEFORE_PUNCT.sub(r"\1", text))
 
 
-def read(image: Image.Image, use_detection: bool = True, use_model: bool = True) -> Reading:
+def read(image: "Image.Image", use_detection: bool = True, use_model: bool = True) -> Reading:
     """Read a photo. Detection adds OCR of each label region, which recovers small print."""
+    from PIL import Image
+
     from recall_lens.perception import barcode, ocr
 
     texts, upcs = [ocr.read_text(image)], barcode.decode(image)
