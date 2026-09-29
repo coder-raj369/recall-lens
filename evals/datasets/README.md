@@ -67,3 +67,36 @@ Each record has the photo `url`, the `target` recall, the `relevant` recalls (fo
 - Text too small or blurred for a person to read at the published resolution is not labeled; 38 photos have no legible identifier at all (86 show no code), which tests that the pipeline returns nothing rather than guessing.
 
 Status: **v0**, labeled by the project author by viewing each photo.
+
+## End to end
+
+| File | Cases | Purpose |
+|---|---|---|
+| `e2e_dev.jsonl` | 48 | Error analysis and, once LLM runs are budgeted, tuning the confidence threshold |
+| `e2e_test.jsonl` | 102 | Held-out evaluation |
+
+Each case is what a person would send (a `query`, a `photo` from the photo set, or both) and the `expected` outcome:
+
+- **affected**: a recall in the corpus covers this unit.
+- **not_affected**: a recall covers this product but not this unit (a hard negative), or no recall covers this vehicle's model year.
+- **needs_info**: whether the unit is covered depends on something the person has not given, such as a lot code, a model year or a brand.
+- **no_recall**: nothing in the corpus is about this product.
+
+A construction rule fixes each outcome, and every recall-derived case was checked against the notice it comes from:
+
+| Type | Cases | Construction | Expected |
+|---|---|---|---|
+| `listed_code` | 24 | Recalls whose notice lists specific lots, batches or serial numbers (7 FDA drugs, 7 foods, 4 devices; 6 CPSC), sampled with a fixed seed from notices of at most 1,500 characters without range, "all lots" or incomplete-list wording, then read to confirm the list is the whole scope. The query names the product and the first code the list prints. | affected |
+| `unlisted_code` | 24 | The same product with an adjacent code: the listed code with its last digit (or the one before) changed to the first value that appears nowhere in the corpus. One Julian date code was changed in its day digits instead. | not_affected |
+| `no_code` | 15 | The same product with no code; every other recall of that product in the corpus is lot-specific too. | needs_info |
+| `all_units` | 15 | Recalls that cover every unit of the named product (11 CPSC notices with no unit restriction, 4 FDA "All lots"), read to confirm; wording such as "distributed by" or "produced ... and prior" excluded. | affected |
+| `vehicle_in` | 15 | A make, model and model year from an NHTSA affected-vehicle list (consumer makes; no buses or heavy trucks). | affected |
+| `vehicle_out` | 12 | A model year between two covered years that no recall in the corpus covers, for models with four or more recalls, and that no variant or broader model name ("Silverado 1500 LD", "Silverado") covers either. | not_affected |
+| `vehicle_no_year` | 6 | A make and model with no year, where recalls cover only some years. | needs_info |
+| `no_recall` | 15 | Well-known products whose brand appears nowhere in the corpus; any code in the query is absent too. | no_recall |
+| `describe` | 9 | A product category with no brand ("space heater") that at least two recall titles match. | needs_info |
+| `photo` | 15 | Recall-notice photos from the photo set, labeled by comparing what is legible with the notice's scope: a listed code or an every-unit model is affected; a brand alone against a lot-, date- or VIN-scoped recall, or a photo with nothing legible, needs information. | 8 affected, 7 needs_info |
+
+Each case records its `target` recall and the `relevant` recalls that are correct to cite, so citations can be scored strictly or leniently as in retrieval: for codes, the recalls in the same FDA event that print the code; for vehicles, every recall covering that make, model and year (any year for `vehicle_out` and `vehicle_no_year`); for descriptions, every recall whose title matches the category. Cases built from the same recall or model share a split, with every third group going to dev; photos keep their split from the photo set.
+
+Known limitations: outcomes are relative to the corpus (recalls published from 2024 onward), so an older recall could cover a `vehicle_out` vehicle; product phrases and query templates were written by the project author and are less varied than real queries; hard negatives are adjacent codes, not codes seen in the wild. Status: **v0**, one annotator.
