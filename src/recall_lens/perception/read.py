@@ -10,6 +10,7 @@ from PIL import Image
 
 from recall_lens.extract import rules
 from recall_lens.ingest.models import Identifier
+from recall_lens.perception import vin
 
 # OCR spacing artifacts that break labeled-code rules: "Model No .: S-Y608", "T30 -F".
 BARCODE_SCALES = (1, 2, 4)
@@ -51,7 +52,8 @@ def read(image: Image.Image, use_detection: bool = True, use_model: bool = True)
                 size = (patch.width * scale, patch.height * scale)
                 upcs |= barcode.decode(patch.resize(size, Image.Resampling.LANCZOS))
     text = "\n".join(normalize(t) for t in texts)
-    identifiers = rules.extract(text) | {("upc", upc) for upc in upcs}
+    vins = vin.find(text)
+    identifiers = rules.extract(text) | {("upc", u) for u in upcs} | {("vin", v) for v in vins}
     if use_model:
         from recall_lens.extract import model
 
@@ -60,4 +62,4 @@ def read(image: Image.Image, use_detection: bool = True, use_model: bool = True)
         identifiers |= {
             (k, v) for k, v in brands if not (" " not in v and any(c.isdigit() for c in v))
         }
-    return Reading(tuple(texts), frozenset(identifiers), frozenset(rules.codes(text) | upcs))
+    return Reading(tuple(texts), frozenset(identifiers), frozenset(rules.codes(text) | upcs | vins))
