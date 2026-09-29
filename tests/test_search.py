@@ -178,3 +178,11 @@ def test_bge_reranker_prefers_the_relevant_document():
         ["Tower heaters recalled due to fire hazard", "Bike helmets recalled due to head injury"],
     )
     assert heater > helmet
+
+
+def test_barcode_codes_match_upcs_regardless_of_leading_zeros(conn, corpus):
+    # The helmet recall stores UPC 012345678905; a scanner reports the EAN-13 0012345678905.
+    assert search.identifier_matches(conn, "", extra_codes={"0012345678905"}) == {
+        corpus["26730"]: 1
+    }
+    assert search.identifier_matches(conn, "", extra_codes={"12345678905"}) == {corpus["26730"]: 1}

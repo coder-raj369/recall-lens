@@ -5,7 +5,7 @@ Primitives return recall IDs, best match first; `search` combines them and retur
 """
 
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
 
@@ -132,23 +132,34 @@ def lexical(
 
 
 def identifier_matches(
-    conn: psycopg.Connection, query: str, filters: Filters = NO_FILTERS, limit: int = 50
+    conn: psycopg.Connection,
+    query: str,
+    filters: Filters = NO_FILTERS,
+    limit: int = 50,
+    extra_codes: Iterable[str] = (),
 ) -> dict[int, int]:
-    """Recalls whose stored identifiers exactly match codes in the query, with match counts."""
-    codes = rules.codes(query)
+    """Recalls whose stored identifiers exactly match codes in the query, with match counts.
+
+    extra_codes adds codes found outside the query text, such as decoded barcodes. UPCs match
+    regardless of leading zeros: scanners report EAN-13 ("0799403302902") where recall text
+    prints UPC-A ("799403302902").
+    """
+    codes = rules.codes(query) | set(extra_codes)
     if not codes:
         return {}
+    digits = sorted({c.lstrip("0") for c in codes if c.isdigit() and len(c) >= 8})
     where, params = filters.sql()
     rows = conn.execute(
         f"""
         SELECT r.id, count(DISTINCT i.value)
         FROM recall_identifiers i JOIN recalls r ON r.id = i.recall_id
-        WHERE i.kind = ANY(%(kinds)s) AND i.value = ANY(%(codes)s){where}
+        WHERE ((i.kind = ANY(%(kinds)s) AND i.value = ANY(%(codes)s))
+               OR (i.kind = 'upc' AND ltrim(i.value, '0') = ANY(%(digits)s))){where}
         GROUP BY r.id
         ORDER BY 2 DESC, r.id
         LIMIT %(limit)s
         """,
-        {"kinds": CODE_KINDS, "codes": sorted(codes), "limit": limit, **params},
+        {"kinds": CODE_KINDS, "codes": sorted(codes), "digits": digits, "limit": limit, **params},
     ).fetchall()
     return dict(rows)
 
@@ -199,6 +210,7 @@ def search(
     use_lexical: bool = True,
     use_identifiers: bool = True,
     use_rerank: bool = False,  # opt-in: ~5 s per query on CPU; see README, Phase 2 results
+    extra_codes: Iterable[str] = (),
     embedder: Embedder | None = None,
     reranker: Reranker | None = None,
 ) -> list[Hit]:
@@ -216,7 +228,9 @@ def search(
     if use_lexical:
         rankings.append(lexical(conn, query, CANDIDATES, filters))
     fused = rrf(rankings)
-    exact = identifier_matches(conn, query, filters) if use_identifiers else {}
+    exact = (
+        identifier_matches(conn, query, filters, extra_codes=extra_codes) if use_identifiers else {}
+    )
     position = {recall_id: i for i, recall_id in enumerate(fused)}
     first = sorted(exact, key=lambda r: (-exact[r], position.get(r, len(fused))))
     rest = [r for r in fused if r not in exact]
