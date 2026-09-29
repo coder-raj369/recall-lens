@@ -1,4 +1,7 @@
+import pytest
+
 from recall_lens.agents import nodes
+from recall_lens.agents.state import AFFECTED, NEEDS_INFO, NO_MATCH, NOT_AFFECTED, UNDETERMINED
 from recall_lens.perception.read import Reading
 
 
@@ -29,8 +32,6 @@ def test_identify_works_without_lookups_or_photo():
 
 
 def test_perceive_reads_the_photo_and_builds_a_focused_query(monkeypatch):
-    import pytest
-
     pytest.importorskip("PIL")
     import recall_lens.perception as perception
 
@@ -78,7 +79,6 @@ def test_retrieve_passes_codes_and_returns_plain_candidates(conn):
 def test_verify_checks_each_candidate_against_its_stored_scope(conn):
     from datetime import date
 
-    from recall_lens.agents.state import AFFECTED, NOT_AFFECTED
     from recall_lens.ingest import store
     from recall_lens.ingest.models import Recall
 
@@ -118,3 +118,71 @@ def test_verify_checks_each_candidate_against_its_stored_scope(conn):
     verdicts = nodes.verify(nodes.Services(conn=conn))(state)["verdicts"]
     assert [v["verdict"] for v in verdicts] == [NOT_AFFECTED, AFFECTED]
     assert verdicts[0]["method"] == "rules" and "1276125" in verdicts[0]["reason"]
+
+
+def candidate(i, recall_id=None):
+    return {"recall_id": recall_id or i, "agency": "cpsc", "source_id": str(i),
+            "title": f"Recall {i}", "source_url": f"https://cpsc.gov/{i}"}  # fmt: skip
+
+
+def verdict(i, value, confidence=None, reason="Model X-1 is listed in this recall.", evidence=None):
+    return {"source_id": str(i), "agency": "cpsc", "verdict": value, "reason": reason,
+            "evidence": evidence, "method": "rules" if confidence is None else "llm",
+            "confidence": confidence}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("decided", "expected", "cited"),
+    [
+        ([(NOT_AFFECTED, None), (UNDETERMINED, None), (AFFECTED, None)], AFFECTED, ["3"]),
+        ([(NOT_AFFECTED, None), (NEEDS_INFO, None)], NEEDS_INFO, ["2"]),
+        ([(NOT_AFFECTED, None), (NOT_AFFECTED, None)], NOT_AFFECTED, ["1", "2"]),
+        ([(UNDETERMINED, None), (UNDETERMINED, None)], NO_MATCH, []),
+        # Unsure LLM verdicts abstain: never "not affected", nor "unrelated", on a guess.
+        ([(NOT_AFFECTED, 0.6)], NEEDS_INFO, ["1"]),
+        ([(UNDETERMINED, 0.5)], NEEDS_INFO, ["1"]),
+        ([(UNDETERMINED, 0.95), (AFFECTED, 0.9)], AFFECTED, ["2"]),
+    ],
+)
+def test_decide_prefers_any_sign_of_a_recall_and_abstains_when_unsure(decided, expected, cited):
+    candidates = [candidate(i) for i in range(1, len(decided) + 1)]
+    verdicts = [verdict(i, v, c) for i, (v, c) in enumerate(decided, 1)]
+    final, recalls = nodes.decide(candidates, verdicts, threshold=0.8)
+    assert final == expected and [r["source_id"] for r in recalls] == cited
+
+
+def test_advise_cites_the_recall_with_its_hazard_and_remedy(conn):
+    from datetime import date
+
+    from recall_lens.ingest import store
+    from recall_lens.ingest.models import Recall
+
+    store.upsert(
+        conn,
+        Recall(agency="cpsc", source_id="1", title="Recall 1", recall_date=date(2026, 6, 4),
+               raw={}, hazard="The heater can overheat.", remedy="Stop using it; get a refund."),
+    )  # fmt: skip
+    (recall_id,) = conn.execute("SELECT id FROM recalls").fetchone()
+    services = nodes.Services(conn=conn)
+    state = {
+        "candidates": [candidate(1, recall_id)],
+        "verdicts": [verdict(1, AFFECTED, evidence="Model X-1 heaters")],
+    }
+    answer = nodes.advise(services)(state)["answer"]
+    assert answer["verdict"] == AFFECTED and answer["recalls"][0]["source_id"] == "1"
+    assert answer["message"].splitlines() == [
+        "Your product is covered by a recall.",
+        "CPSC recall 1: Recall 1",
+        "Model X-1 is listed in this recall.",
+        'The notice says: "Model X-1 heaters"',
+        "Hazard: The heater can overheat.",
+        "Remedy: Stop using it; get a refund.",
+        "https://cpsc.gov/1",
+    ]
+    state["verdicts"] = [verdict(1, UNDETERMINED, reason="Nothing ties it.")]
+    assert nodes.advise(services)(state)["answer"] == {
+        "verdict": NO_MATCH,
+        "message": "No recall we found matches your product.\n"
+        "Compared with the closest recall; others are not ruled out.",
+        "recalls": [],
+    }

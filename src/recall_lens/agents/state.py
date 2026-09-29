@@ -7,6 +7,7 @@ NOT_AFFECTED = "not_affected"
 NEEDS_INFO = "needs_info"  # the recall applies to specific units; we lack the code to tell
 UNDETERMINED = "undetermined"  # rules could not decide; only arbitration or a person can
 VERDICTS = (AFFECTED, NOT_AFFECTED, NEEDS_INFO, UNDETERMINED)
+NO_MATCH = "no_match"  # final answers only: no recall found is tied to the product
 
 
 class Candidate(TypedDict):
@@ -38,4 +39,4 @@ class CheckState(TypedDict, total=False):
     search_text: str  # query sent to retrieval
     candidates: list[Candidate]
     verdicts: list[Verdict]
-    answer: dict  # final verdict, cited recall and message
+    answer: dict  # final verdict, message and the recalls it cites

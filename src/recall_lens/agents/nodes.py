@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import psycopg
 
 from recall_lens.agents import verify as rules_verifier
-from recall_lens.agents.state import CheckState
+from recall_lens.agents.state import AFFECTED, NEEDS_INFO, NO_MATCH, NOT_AFFECTED, CheckState
 from recall_lens.extract import rules
 from recall_lens.perception import vin
 from recall_lens.perception.read import Reading, normalize
@@ -29,6 +29,7 @@ class Services:
     search: Callable[..., list[retrieval.Hit]] = retrieval.search
     lookups: bool = True  # resolve barcodes (Open Food Facts) and VINs (NHTSA vPIC)
     candidates: int = 5  # recalls checked per request
+    threshold: float = 0.8  # LLM verdicts below this confidence abstain; tune on the dev split
 
 
 def perceive(services: Services):
@@ -130,5 +131,57 @@ def verify(services: Services):
                  "confidence": None}
             )  # fmt: skip
         return {"verdicts": verdicts}
+
+    return run
+
+
+# A missed recall is the costliest error, so any sign of one outranks a clean result.
+PRIORITY = (AFFECTED, NEEDS_INFO, NOT_AFFECTED)
+HEADLINES = {
+    AFFECTED: "Your product is covered by a recall.",
+    NEEDS_INFO: "A recall may cover your product; one more detail would settle it.",
+    NOT_AFFECTED: "A recall covers this product, but not your unit.",
+    NO_MATCH: "No recall we found matches your product.",
+}
+
+
+def decide(candidates: list, verdicts: list, threshold: float) -> tuple[str, list[dict]]:
+    """The final verdict and the recalls behind it, in search rank (ADR-0003).
+
+    LLM verdicts below the confidence threshold become requests for more information.
+    """
+    cited = []
+    for candidate, v in zip(candidates, verdicts, strict=True):
+        if v["confidence"] is not None and v["confidence"] < threshold:
+            reason = f"Not sure enough to decide ({v['confidence']:.0%}). {v['reason']}"
+            v = {**v, "verdict": NEEDS_INFO, "reason": reason}
+        cited.append({**candidate, **v})
+    for verdict in PRIORITY:
+        if recalls := [c for c in cited if c["verdict"] == verdict]:
+            return verdict, recalls
+    return NO_MATCH, []
+
+
+def advise(services: Services):
+    def run(state: CheckState) -> dict:
+        candidates = state.get("candidates", [])
+        verdict, recalls = decide(candidates, state.get("verdicts", []), services.threshold)
+        lines = [HEADLINES[verdict]]
+        if recalls:
+            top = recalls[0]
+            lines += [f"{top['agency'].upper()} recall {top['source_id']}: {top['title']}"]
+            lines += [top["reason"], top["evidence"] and f'The notice says: "{top["evidence"]}"']
+            if verdict == AFFECTED:
+                hazard, remedy = services.conn.execute(
+                    "SELECT hazard, remedy FROM recalls WHERE id = %s", (top["recall_id"],)
+                ).fetchone()
+                lines += [hazard and f"Hazard: {hazard}", remedy and f"Remedy: {remedy}"]
+            lines += [top["source_url"]]
+        if candidates and verdict in (NOT_AFFECTED, NO_MATCH):
+            n = len(candidates)
+            closest = f"the {n} closest recalls" if n > 1 else "the closest recall"
+            lines += [f"Compared with {closest}; others are not ruled out."]
+        message = "\n".join(filter(None, lines))
+        return {"answer": {"verdict": verdict, "message": message, "recalls": recalls}}
 
     return run
