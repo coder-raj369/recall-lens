@@ -9,6 +9,9 @@ def test_normalize_repairs_ocr_spacing():
     assert reader.normalize("Model No .: S-Y608") == "Model No.: S-Y608"
     assert reader.normalize("MODEL:T30 -F  S/N : TM729") == "MODEL:T30-F  S/N: TM729"
     assert reader.normalize("red - blue") == "red - blue"  # only spaced hyphens between codes
+    assert (
+        reader.normalize("0 28914 17249 1 and 6 194389 198176") == "028914172491 and 6194389198176"
+    )
 
 
 def test_read_combines_regions_and_extracts(monkeypatch):

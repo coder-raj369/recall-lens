@@ -31,7 +31,12 @@ class Reading:
         return "\n".join(self.texts)
 
 
+# Digits printed under a barcode, which OCR returns in groups: "0 28914 17249 1", "6 194389 198176".
+_BARCODE_DIGITS = re.compile(r"(?<!\d)(\d) (\d{5,6}) (\d{5,6})(?: (\d))?(?!\d)")
+
+
 def normalize(text: str) -> str:
+    text = _BARCODE_DIGITS.sub(lambda m: "".join(g for g in m.groups() if g), text)
     return _SPACED_HYPHEN.sub("-", _SPACE_BEFORE_PUNCT.sub(r"\1", text))
 
 
