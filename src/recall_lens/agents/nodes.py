@@ -121,7 +121,8 @@ def retrieve(services: Services):
 SCOPE_CHARS = 20_000  # scope wording is near the start; some FDA reports run to megabytes
 
 
-def load_scope(conn: psycopg.Connection, recall_id: int) -> rules_verifier.Scope:
+def scope_inputs(conn: psycopg.Connection, recall_id: int) -> tuple[str, str, list, list]:
+    """What a recall's scope is parsed from: title, scope text, identifiers, affected vehicles."""
     title, text, affected = conn.execute(
         "SELECT title, concat_ws(E'\\n', title, left(description, %s)), raw->'affected'"
         " FROM recalls WHERE id = %s",
@@ -130,7 +131,11 @@ def load_scope(conn: psycopg.Connection, recall_id: int) -> rules_verifier.Scope
     identifiers = conn.execute(
         "SELECT kind, value FROM recall_identifiers WHERE recall_id = %s", (recall_id,)
     ).fetchall()
-    return rules_verifier.parse_scope(title, text, identifiers, affected or ())
+    return title, text, [list(pair) for pair in identifiers], affected or []
+
+
+def load_scope(conn: psycopg.Connection, recall_id: int) -> rules_verifier.Scope:
+    return rules_verifier.parse_scope(*scope_inputs(conn, recall_id))
 
 
 def facts(state: CheckState) -> rules_verifier.Facts:
@@ -153,27 +158,32 @@ POSSIBLE = (
 )
 
 
+def judge(candidates: list, scopes: list, known: rules_verifier.Facts) -> list[dict]:
+    """The rules' verdict on each candidate recall, given its scope (ADR-0003)."""
+    verdicts = []
+    for candidate, scope in zip(candidates, scopes, strict=True):
+        verdict, reason, evidence = rules_verifier.verify(scope, known)
+        verdicts.append(
+            {"source_id": candidate["source_id"], "agency": candidate["agency"],
+             "verdict": verdict, "reason": reason, "evidence": evidence, "method": "rules",
+             "confidence": None}
+        )  # fmt: skip
+    # A bare description ("space heater") ties to no recall, yet "no match" would be a guess:
+    # ask about the closest recall of that kind of product (ADR-0003). A code the person gave
+    # was already checked, so a description with a code does not ask.
+    if not known.codes and all(v["verdict"] == UNDETERMINED for v in verdicts):
+        for verdict, scope in zip(verdicts, scopes, strict=True):
+            if rules_verifier.possible_match(scope, known):
+                verdict.update(verdict=NEEDS_INFO, reason=POSSIBLE)
+                break
+    return verdicts
+
+
 def verify(services: Services):
     def run(state: CheckState) -> dict:
-        known = facts(state)
-        verdicts, scopes = [], []
-        for candidate in state.get("candidates", []):
-            scopes.append(load_scope(services.conn, candidate["recall_id"]))
-            verdict, reason, evidence = rules_verifier.verify(scopes[-1], known)
-            verdicts.append(
-                {"source_id": candidate["source_id"], "agency": candidate["agency"],
-                 "verdict": verdict, "reason": reason, "evidence": evidence, "method": "rules",
-                 "confidence": None}
-            )  # fmt: skip
-        # A bare description ("space heater") ties to no recall, yet "no match" would be a guess:
-        # ask about the closest recall of that kind of product (ADR-0003). A code the person gave
-        # was already checked, so a description with a code does not ask.
-        if not known.codes and all(v["verdict"] == UNDETERMINED for v in verdicts):
-            for verdict, scope in zip(verdicts, scopes, strict=True):
-                if rules_verifier.possible_match(scope, known):
-                    verdict.update(verdict=NEEDS_INFO, reason=POSSIBLE)
-                    break
-        return {"verdicts": verdicts}
+        candidates = state.get("candidates", [])
+        scopes = [load_scope(services.conn, c["recall_id"]) for c in candidates]
+        return {"verdicts": judge(candidates, scopes, facts(state))}
 
     return run
 
@@ -188,10 +198,13 @@ HEADLINES = {
 }
 
 
-def decide(candidates: list, verdicts: list, threshold: float) -> tuple[str, list[dict]]:
+def decide(
+    candidates: list, verdicts: list, threshold: float, photo_error: str | None = None
+) -> tuple[str, list[dict]]:
     """The final verdict and the recalls behind it, in search rank (ADR-0003).
 
-    LLM verdicts below the confidence threshold become requests for more information.
+    LLM verdicts below the confidence threshold become requests for more information, and a
+    photo nobody could read never yields "no match": the product itself was never checked.
     """
     cited = []
     for candidate, v in zip(candidates, verdicts, strict=True):
@@ -202,16 +215,18 @@ def decide(candidates: list, verdicts: list, threshold: float) -> tuple[str, lis
     for verdict in PRIORITY:
         if recalls := [c for c in cited if c["verdict"] == verdict]:
             return verdict, recalls
-    return NO_MATCH, []
+    return (NEEDS_INFO if photo_error else NO_MATCH), []
 
 
 def advise(services: Services):
     def run(state: CheckState) -> dict:
         candidates = state.get("candidates", [])
-        verdict, recalls = decide(candidates, state.get("verdicts", []), services.threshold)
-        if verdict == NO_MATCH and state.get("photo_error"):
-            # The product itself was never checked, so "no recall" would be a guess.
-            message = f"{state['photo_error']} {ASK}"
+        photo_error = state.get("photo_error")
+        verdict, recalls = decide(
+            candidates, state.get("verdicts", []), services.threshold, photo_error
+        )
+        if verdict == NEEDS_INFO and not recalls:  # the photo could not be read
+            message = f"{photo_error} {ASK}"
             return {"answer": {"verdict": NEEDS_INFO, "message": message, "recalls": []}}
         lines = [HEADLINES[verdict]]
         if recalls:

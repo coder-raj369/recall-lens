@@ -1,0 +1,20 @@
+{
+  "dev": {
+    "cases": 48,
+    "right": 44,
+    "missed": 0,
+    "unsafe": 0
+  },
+  "test": {
+    "cases": 102,
+    "right": 95,
+    "missed": 1,
+    "unsafe": 1
+  },
+  "holdout": {
+    "cases": 150,
+    "right": 128,
+    "missed": 2,
+    "unsafe": 3
+  }
+}
