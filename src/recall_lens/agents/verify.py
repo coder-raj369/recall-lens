@@ -270,6 +270,22 @@ def _brand_match(scope: Scope, facts: Facts) -> str | None:
     return None
 
 
+_ASKING = {"IS", "ARE", "DOES", "DO", "CAN", "SHOULD", "WHAT", "WHICH", "MY", "THE", "ANY", "I"}
+
+
+def possible_match(scope: Scope, facts: Facts) -> bool:
+    """A description with no brand the notice lacks, naming the product the recall is about.
+
+    People capitalize brand names: a capitalized name the notice never mentions ("Hydro Flask",
+    "Oatly") means the person has another product in mind.
+    """
+    names = {w.upper() for w in re.findall(r"\b[A-Z][\w'-]*", facts.text)} - _ASKING
+    notice = _plain(f"{scope.title} {scope.text}")
+    if any(_plain(name) not in notice for name in names):
+        return False
+    return bool(_product_words(facts.text, None) & _product_words(scope.title, None))
+
+
 def _plain(text: str) -> str:
     return f" {' '.join(re.sub(r'[^A-Z0-9 ]', ' ', text.upper()).split())} "
 

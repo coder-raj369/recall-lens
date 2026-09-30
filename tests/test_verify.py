@@ -224,3 +224,12 @@ def test_scope_parsing_ignores_lists_ndcs_years_and_qualified_all_lots():
     ascending = parse_scope("x", "date codes between 11122 and 16919", [])
     assert ascending.ranges == () and ascending.open_ranges  # encoded, never read numerically
     assert KITS.all_units and parse_scope("x", "All lots within expiry", []).all_units
+
+
+def test_a_bare_description_may_match_but_a_brand_the_notice_lacks_does_not():
+    from recall_lens.agents.verify import possible_match
+
+    heaters = parse_scope("Vornado Recalls Space Heaters Due to Fire Hazard", "Space heaters.", [])
+    assert possible_match(heaters, facts("Is my space heater recalled?"))
+    assert not possible_match(heaters, facts("Is my Dyson space heater recalled?"))
+    assert not possible_match(heaters, facts("Is my coffee maker recalled?"))

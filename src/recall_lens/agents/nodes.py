@@ -8,7 +8,14 @@ import psycopg
 from langgraph.types import interrupt
 
 from recall_lens.agents import verify as rules_verifier
-from recall_lens.agents.state import AFFECTED, NEEDS_INFO, NO_MATCH, NOT_AFFECTED, CheckState
+from recall_lens.agents.state import (
+    AFFECTED,
+    NEEDS_INFO,
+    NO_MATCH,
+    NOT_AFFECTED,
+    UNDETERMINED,
+    CheckState,
+)
 from recall_lens.extract import rules
 from recall_lens.perception import vin
 from recall_lens.perception.read import Reading, normalize
@@ -140,18 +147,32 @@ def facts(state: CheckState) -> rules_verifier.Facts:
     )
 
 
+POSSIBLE = (
+    "Your description matches this recall's product but names no brand, model or code; "
+    "is this your product?"
+)
+
+
 def verify(services: Services):
     def run(state: CheckState) -> dict:
         known = facts(state)
-        verdicts = []
+        verdicts, scopes = [], []
         for candidate in state.get("candidates", []):
-            scope = load_scope(services.conn, candidate["recall_id"])
-            verdict, reason, evidence = rules_verifier.verify(scope, known)
+            scopes.append(load_scope(services.conn, candidate["recall_id"]))
+            verdict, reason, evidence = rules_verifier.verify(scopes[-1], known)
             verdicts.append(
                 {"source_id": candidate["source_id"], "agency": candidate["agency"],
                  "verdict": verdict, "reason": reason, "evidence": evidence, "method": "rules",
                  "confidence": None}
             )  # fmt: skip
+        # A bare description ("space heater") ties to no recall, yet "no match" would be a guess:
+        # ask about the closest recall of that kind of product (ADR-0003). A code the person gave
+        # was already checked, so a description with a code does not ask.
+        if not known.codes and all(v["verdict"] == UNDETERMINED for v in verdicts):
+            for verdict, scope in zip(verdicts, scopes, strict=True):
+                if rules_verifier.possible_match(scope, known):
+                    verdict.update(verdict=NEEDS_INFO, reason=POSSIBLE)
+                    break
         return {"verdicts": verdicts}
 
     return run

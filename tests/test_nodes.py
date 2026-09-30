@@ -138,6 +138,29 @@ def test_verify_checks_each_candidate_against_its_stored_scope(conn):
     assert verdicts[0]["method"] == "rules" and "1276125" in verdicts[0]["reason"]
 
 
+def test_verify_asks_about_the_closest_recall_for_a_bare_description(conn):
+    from datetime import date
+
+    from recall_lens.agents.state import UNDETERMINED
+    from recall_lens.ingest import store
+    from recall_lens.ingest.models import Recall
+
+    store.upsert(
+        conn,
+        Recall(agency="cpsc", source_id="26532", title="Vornado Recalls Space Heaters",
+               description="This recall involves Vornado space heaters.",
+               recall_date=date(2026, 6, 4), raw={}, identifiers=frozenset({("brand", "VORNADO")})),
+    )  # fmt: skip
+    (recall_id,) = conn.execute("SELECT id FROM recalls").fetchone()
+    services = nodes.Services(conn=conn)
+    state = {"candidates": [candidate(1, recall_id)], "identifiers": [], "codes": [],
+             "text": "Is my space heater recalled?"}  # fmt: skip
+    (asked,) = nodes.verify(services)(state)["verdicts"]
+    assert asked["verdict"] == NEEDS_INFO and asked["reason"] == nodes.POSSIBLE
+    coded = {**state, "codes": ["SH-100"], "text": "space heater SH-100"}
+    assert nodes.verify(services)(coded)["verdicts"][0]["verdict"] == UNDETERMINED
+
+
 def candidate(i, recall_id=None):
     return {"recall_id": recall_id or i, "agency": "cpsc", "source_id": str(i),
             "title": f"Recall {i}", "source_url": f"https://cpsc.gov/{i}"}  # fmt: skip
