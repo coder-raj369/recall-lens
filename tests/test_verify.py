@@ -96,6 +96,27 @@ DEFENDER = parse_scope(
     [("brand", "LAND ROVER"), ("brand", "NEW FLYER")],
     affected=["LAND ROVER DEFENDER (2020, 2021)", "NEW FLYER XE40 (2020)"],
 )
+RANGER_VINS = parse_scope(
+    "Polaris Industries Recalls Ranger XD 1500 Recreational Off-Road Vehicles",
+    "This recall involves certain VINs of Polaris Model Year 2024 RANGER XD 1500 ROVs.",
+    [("brand", "POLARIS")],
+)
+MADELEINES = parse_scope(
+    "Kirkland Signature Traditional Madeleines 12 Count/net wt. 18oz., Item #2000012",
+    "Kirkland Signature Traditional Madeleines. Codes: Pack Date 04/15/2026",
+    [("brand", "KIRKLAND SIGNATURE"), ("model", "2000012"), ("upc", "000020000127")],
+)
+POKE = parse_scope(
+    "Kirkland Signature brand Ahi Tuna Wasabi Poke, net wt. 1lb. Product is packaged in clear "
+    "plastic clamshell container and sold to consumers.",
+    "Codes: Pack Date of 9/18/2025 Sell By Date of 9/22/2025",
+    [("brand", "KIRKLAND SIGNATURE BRAND")],
+)
+BRIE = parse_scope(  # the extracted brand swallows the product word
+    "Mon Sire Brie, soft-ripened French cheese, 1 kg",
+    "Codes: LOT 00000ZRAA1 EXP 08/15/2026 LOT 00000ZUAD2 EXP 08/18/2026",
+    [("brand", "MON SIRE BRIE"), ("lot", "00000ZRAA1"), ("lot", "00000ZUAD2")],
+)
 FILTERS = parse_scope("Britax Recalls Car Seats", "Britax car seat recall.", [("brand", "BRITAX")])
 KITS_LIST = parse_scope(
     "Medline Convenience Kits",
@@ -165,6 +186,14 @@ PUMP_UNIT = parse_scope(
         (DEFENDER, "2019 Land Rover Defender", NOT_AFFECTED),
         (DEFENDER, "my new Honda Civic", UNDETERMINED),  # "new" is not the make NEW FLYER
         (FILTERS, "Brita water filter pitcher", UNDETERMINED),  # short words need an exact match
+        # A brand's other products do not answer for yours; "is" is not a product word.
+        (MADELEINES, "Kirkland Signature smoked salmon 12 oz, lot 8512801275", UNDETERMINED),
+        (MADELEINES, "Kirkland Signature madeleines", NEEDS_INFO),
+        (POKE, "Is my Kirkland Signature smoked salmon 12 oz recalled?", UNDETERMINED),
+        (ANTACID, "Should I stop using my CAREone antacid? Lot # 1276125", NOT_AFFECTED),
+        (BRIE, "Lot 00000ZRAA6 on my Mon Sire brie 1 kg: is it part of the recall?", NOT_AFFECTED),
+        # Wording that limits the recall to some units asks rather than flags every unit.
+        (RANGER_VINS, "RANGER | POLARS", NEEDS_INFO),
     ],
 )
 def test_verdicts(scope, text, expected):

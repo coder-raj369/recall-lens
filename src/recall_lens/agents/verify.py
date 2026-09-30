@@ -74,6 +74,20 @@ _TITLE_NOISE = {
     "BURN", "SHOCK", "CHOKING", "LACERATION", "FALL", "ENTRAPMENT", "SUFFOCATION", "POISONING",
     "TIP-OVER", "ELECTROCUTION", "DROWNING", "INGESTION", "STRANGULATION", "CRASH",
 }  # fmt: skip
+# Words of a question or a code label, not of a product: "Should I stop using my ... lot 123?"
+_STOP = {
+    "ANY", "ARE", "CAN", "DOES", "HAS", "HAVE", "HOW", "ITS", "NOT", "OPEN", "OUR", "PART",
+    "SHOULD", "STILL", "STOP", "THIS", "THAT", "USING", "WAS", "WHAT", "WHICH", "YOUR", "MINE",
+    "LOT", "BATCH", "SERIAL", "NUMBER", "MODEL", "CODE", "DATE", "BEST", "SELL", "USE", "EXP",
+    "UPC", "NDC", "VIN", "SKU", "ITEM", "REF", "YEAR",
+}  # fmt: skip
+# Scope limited to some units without listing them in a form we can compare ("certain VINs of
+# Model Year 2024 RANGER XD 1500"): the person has to check, so it never covers every unit.
+_PARTIAL = re.compile(
+    r"\b(?:certain|select|specific)\s+(?:[\w-]+\s+){0,2}?"
+    r"(?:VINs?|units|serial|models?|lots?|batch(?:es)?|sizes|colors)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -120,6 +134,7 @@ class Scope:
     all_units: bool = False
     open_ranges: tuple[str, ...] = ()  # range phrases that could not be read numerically
     incomplete: str | None = None  # wording that says the code list continues elsewhere
+    partial: str | None = None  # wording that limits the recall to units it does not list
 
 
 @dataclass(frozen=True)
@@ -189,6 +204,7 @@ def parse_scope(title: str, text: str, identifiers: list[tuple[str, str]], affec
         all_units=bool(_ALL_UNITS.search(text)),
         open_ranges=tuple(open_ranges),
         incomplete=(m := _INCOMPLETE.search(text)) and m.group(),
+        partial=(m := _PARTIAL.search(text)) and m.group(),
     )
 
 
@@ -209,9 +225,17 @@ def _sentence(text: str, needle: str) -> str | None:
 
 
 def _words(text: str) -> set[str]:
-    """Upper-cased words, crudely singular ("HEATERS" -> "HEATER")."""
-    words = re.findall(r"[A-Z][A-Z'&-]+", text.upper())
+    """Upper-cased words of three letters or more, crudely singular ("HEATERS" -> "HEATER").
+
+    Letters inside codes are not words: "00000ZRAA6" and "HFK-5115" contribute nothing.
+    """
+    words = re.findall(r"(?<![A-Z0-9])[A-Z][A-Z'&-]{2,}(?![A-Z0-9])", text.upper())
     return {w[:-1] if w.endswith("S") and len(w) > 3 else w for w in words}
+
+
+def _product_words(text: str, brand: str | None) -> set[str]:
+    """What a text calls the product: its words without noise, question words or the brand."""
+    return _words(text) - _TITLE_NOISE - _STOP - _words(brand or "")
 
 
 def _one_edit(a: str, b: str) -> bool:
@@ -295,7 +319,11 @@ def verify(scope: Scope, facts: Facts) -> tuple[str, str, str | None]:
         return {_key(c): c for c in facts.codes if _key(c) in labeled or _key(c) not in typed}
 
     unit_scoped = bool(
-        any(listed[k] for k in UNIT_KINDS) or scope.ranges or scope.windows or scope.open_ranges
+        any(listed[k] for k in UNIT_KINDS)
+        or scope.ranges
+        or scope.windows
+        or scope.open_ranges
+        or scope.partial
     )
 
     def mentioned(codes) -> set[str]:
@@ -366,9 +394,10 @@ def verify(scope: Scope, facts: Facts) -> tuple[str, str, str | None]:
             "Nothing you gave (brand, model or code) ties your product to this recall.",
             None,
         )
+    named = _product_words(facts.text, brand)
+    same_product = bool(named & _product_words(scope.title, brand))
     if scope.all_units or not (unit_scoped or listed["model"]):
-        product = _words(scope.title) - _TITLE_NOISE - _words(brand or "")
-        if model_hits or _words(facts.text) & product:
+        if model_hits or same_product:
             evidence = _sentence(scope.text, "all ") if scope.all_units else None
             return AFFECTED, "This recall covers every unit of this product.", evidence
         return (
@@ -376,6 +405,8 @@ def verify(scope: Scope, facts: Facts) -> tuple[str, str, str | None]:
             f"This recall is for a {brand.title()} product, but not clearly yours.",
             None,
         )
+    if not model_hits and named and not same_product:  # the brand's other products
+        return UNDETERMINED, f"This recall is for a different {brand.title()} product.", None
 
     # 4. A unit-scoped recall of the user's product: compare the unit's date or code.
     for kind, when in _user_dates(facts):
@@ -417,7 +448,9 @@ def verify(scope: Scope, facts: Facts) -> tuple[str, str, str | None]:
                     None,
                 )
     wanted = (
-        "lot or serial number"
+        "VIN"
+        if scope.partial and "VIN" in scope.partial.upper()
+        else "lot or serial number"
         if listed["lot"] or scope.ranges
         else next(
             (
