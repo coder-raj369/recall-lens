@@ -117,6 +117,12 @@ BRIE = parse_scope(  # the extracted brand swallows the product word
     "Codes: LOT 00000ZRAA1 EXP 08/15/2026 LOT 00000ZUAD2 EXP 08/18/2026",
     [("brand", "MON SIRE BRIE"), ("lot", "00000ZRAA1"), ("lot", "00000ZUAD2")],
 )
+PADS = parse_scope(  # the title never says "protector"; the brand swallows "mattress"
+    "Mattress Pads Recalled Due to Fire Hazard; Manufactured by Avocado Mattress",
+    "This recall involves Avocado-branded Organic Cotton Mattress Pad Protectors sold in sizes "
+    "Twin through California King.",
+    [("brand", "AVOCADO MATTRESS")],
+)
 FILTERS = parse_scope("Britax Recalls Car Seats", "Britax car seat recall.", [("brand", "BRITAX")])
 KITS_LIST = parse_scope(
     "Medline Convenience Kits",
@@ -192,6 +198,7 @@ PUMP_UNIT = parse_scope(
         (POKE, "Is my Kirkland Signature smoked salmon 12 oz recalled?", UNDETERMINED),
         (ANTACID, "Should I stop using my CAREone antacid? Lot # 1276125", NOT_AFFECTED),
         (BRIE, "Lot 00000ZRAA6 on my Mon Sire brie 1 kg: is it part of the recall?", NOT_AFFECTED),
+        (PADS, "PACKAGE-AVOCADO PROTECTOR 100% ORGANIC COTTON", AFFECTED),
         # Wording that limits the recall to some units asks rather than flags every unit.
         (RANGER_VINS, "RANGER | POLARS", NEEDS_INFO),
     ],

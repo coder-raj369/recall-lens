@@ -73,6 +73,7 @@ _TITLE_NOISE = {
     "BY", "AT", "TO", "IMPORTED", "MANUFACTURED", "DISTRIBUTED", "CERTAIN", "SELECT", "FIRE",
     "BURN", "SHOCK", "CHOKING", "LACERATION", "FALL", "ENTRAPMENT", "SUFFOCATION", "POISONING",
     "TIP-OVER", "ELECTROCUTION", "DROWNING", "INGESTION", "STRANGULATION", "CRASH",
+    "INVOLVE", "INVOLVES", "RECALLING", "PRODUCT",
 }  # fmt: skip
 # Words of a question or a code label, not of a product: "Should I stop using my ... lot 123?"
 _STOP = {
@@ -238,6 +239,12 @@ def _product_words(text: str, brand: str | None) -> set[str]:
     return _words(text) - _TITLE_NOISE - _STOP - _words(brand or "")
 
 
+def _named(scope: Scope) -> str:
+    """How the notice names the product: its title and the first sentence after it."""
+    body = scope.text[len(scope.title) :] if scope.text.startswith(scope.title) else scope.text
+    return f"{scope.title} {re.split(r'(?<=[.;])\s', body.strip(), maxsplit=1)[0][:300]}"
+
+
 def _one_edit(a: str, b: str) -> bool:
     """Whether a and b differ by at most one substitution, insertion or deletion."""
     if len(a) > len(b):
@@ -283,7 +290,7 @@ def possible_match(scope: Scope, facts: Facts) -> bool:
     notice = _plain(f"{scope.title} {scope.text}")
     if any(_plain(name) not in notice for name in names):
         return False
-    return bool(_product_words(facts.text, None) & _product_words(scope.title, None))
+    return bool(_product_words(facts.text, None) & _product_words(_named(scope), None))
 
 
 def _plain(text: str) -> str:
@@ -411,7 +418,7 @@ def verify(scope: Scope, facts: Facts) -> tuple[str, str, str | None]:
             None,
         )
     named = _product_words(facts.text, brand)
-    same_product = bool(named & _product_words(scope.title, brand))
+    same_product = bool(named & _product_words(_named(scope), brand))
     if scope.all_units or not (unit_scoped or listed["model"]):
         if model_hits or same_product:
             evidence = _sentence(scope.text, "all ") if scope.all_units else None
