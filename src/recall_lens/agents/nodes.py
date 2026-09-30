@@ -1,5 +1,6 @@
 """Node implementations for the recall-check graph (see agents.graph for the topology)."""
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -44,7 +45,7 @@ def perceive(services: Services):
             return {"photo_error": "The photo could not be opened."}
         finally:
             release_models()  # retrieval loads bge-m3 next; together they overflow 8 GB
-        if not (reading.text.strip() or reading.codes):
+        if not (reading.codes or re.search(r"[A-Za-z]{3}", reading.text)):  # "O" is not a reading
             return {"photo_error": "No text could be read from the photo."}
         return {
             "photo_text": normalize(reading.text),
@@ -57,10 +58,11 @@ def perceive(services: Services):
     return run
 
 
-RETAKE = (
-    "We could not read the photo. Retake it closer to the label, with any lot, model or date "
-    "code in focus, or describe the product."
+ASK = (
+    "Retake it closer to the label, with any lot, model or date code in focus, "
+    "or describe the product."
 )
+RETAKE = f"We could not read the photo. {ASK}"
 
 
 def retake(state: CheckState) -> dict:
@@ -186,6 +188,10 @@ def advise(services: Services):
     def run(state: CheckState) -> dict:
         candidates = state.get("candidates", [])
         verdict, recalls = decide(candidates, state.get("verdicts", []), services.threshold)
+        if verdict == NO_MATCH and state.get("photo_error"):
+            # The product itself was never checked, so "no recall" would be a guess.
+            message = f"{state['photo_error']} {ASK}"
+            return {"answer": {"verdict": NEEDS_INFO, "message": message, "recalls": []}}
         lines = [HEADLINES[verdict]]
         if recalls:
             top = recalls[0]

@@ -58,7 +58,10 @@ def test_perceive_reports_photos_it_cannot_use(monkeypatch):
         raise FileNotFoundError(photo)
 
     blank = Reading(texts=("",), identifiers=frozenset(), codes=frozenset())
-    for read, error in [(missing, "could not be opened"), (lambda photo: blank, "No text")]:
+    stray = Reading(texts=("O",), identifiers=frozenset(), codes=frozenset())
+    readings = [(missing, "could not be opened"), (lambda photo: blank, "No text"),
+                (lambda photo: stray, "No text")]  # fmt: skip
+    for read, error in readings:
         update = nodes.perceive(nodes.Services(read_photo=read))({"photo": "label.jpg"})
         assert list(update) == ["photo_error"] and error in update["photo_error"]
 
@@ -200,6 +203,12 @@ def test_advise_cites_the_recall_with_its_hazard_and_remedy(conn):
         in (unread["answer"]["message"])
     )
     state["verdicts"] = [verdict(1, UNDETERMINED, reason="Nothing ties it.")]
+    unchecked = nodes.advise(services)({**state, "photo_error": "No text could be read."})
+    assert unchecked["answer"] == {  # never "no recall" for a product nobody could read
+        "verdict": NEEDS_INFO,
+        "message": f"No text could be read. {nodes.ASK}",
+        "recalls": [],
+    }
     assert nodes.advise(services)(state)["answer"] == {
         "verdict": NO_MATCH,
         "message": "No recall we found matches your product.\n"
