@@ -1,6 +1,6 @@
 """End-to-end evaluation: final answers against the gold set, for the graph and its baselines.
 
-Usage: python -m recall_lens.evals.e2e [--split dev|test] [--arms graph search_only ...] [--dump F]
+Usage: python -m recall_lens.evals.e2e [--split dev|test|holdout] [--arms NAME ...] [--dump F]
 
 Every arm runs the same graph (perception, identification, retrieval and advice) and differs only
 in how candidates are verified, so the comparison isolates verification:
@@ -263,7 +263,7 @@ def report(split: str, cases: list[dict], results: dict[str, list[dict]], skippe
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m recall_lens.evals.e2e")
-    parser.add_argument("--split", choices=["dev", "test"], default="test")
+    parser.add_argument("--split", choices=["dev", "test", "holdout"], default="holdout")
     parser.add_argument("--arms", nargs="+", choices=list(ARMS), default=list(ARMS))
     parser.add_argument("--dump", type=Path, help="write per-case answers as JSON lines")
     args = parser.parse_args()

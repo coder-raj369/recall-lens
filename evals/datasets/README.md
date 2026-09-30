@@ -73,7 +73,8 @@ Status: **v0**, labeled by the project author by viewing each photo.
 | File | Cases | Purpose |
 |---|---|---|
 | `e2e_dev.jsonl` | 48 | Error analysis and, once LLM runs are budgeted, tuning the confidence threshold |
-| `e2e_test.jsonl` | 102 | Held-out evaluation |
+| `e2e_test.jsonl` | 102 | Held-out evaluation in Phase 4; used for error analysis since |
+| `e2e_holdout.jsonl` | 150 | Fresh held-out evaluation from Phase 5 on; not inspected for errors before reporting |
 
 Each case is what a person would send (a `query`, a `photo` from the photo set, or both) and the `expected` outcome:
 
@@ -100,5 +101,7 @@ A construction rule fixes each outcome, and every recall-derived case was checke
 Each case records its `target` recall and the `relevant` recalls that are correct to cite, so citations can be scored strictly or leniently as in retrieval: for codes, the recalls in the same FDA event that print the code; for vehicles, every recall covering that make, model and year (any year for `vehicle_out` and `vehicle_no_year`); for descriptions, every recall whose title matches the category. Cases built from the same recall or model share a split, with every third group going to dev; photos keep their split from the photo set.
 
 **Corrections (v0.1).** After the first held-out run, all 54 unlisted-code, no-code and all-units cases were re-audited with checks independent of the verifier: code ranges in every other recall, brand-level sibling recalls, and model restrictions in the notice. One label was wrong: `e2e-test-045` asks about a NICREW light without its model number while the notice covers only model N21743, so the outcome is `needs_info`, not `affected`. The graph had answered `needs_info`, so the correction raises its score; the Phase 4 results say so. The corpus was also rebuilt on 2026-09-30 after the local database was lost, and every construction rule was re-checked against it. One new NHTSA recall now also covers 2016–2017 Silverado and Sierra 1500s; no outcome changed.
+
+**Holdout split (Phase 5).** Built with the same case types and proportions from recalls, FDA events, vehicle models and photos that no other split uses, with new seeds and three checks the audit showed were missing: unlisted codes fall outside every "through", "to" or "between" range in the corpus; no-code products were reviewed against every recall of the same brand; all-unit queries name the model whenever the notice lists models. For three short numeric codes every nearby variant appears somewhere in the corpus, mostly in long device serial lists, so those variants only have to be absent from, and outside the ranges of, recalls of the same brand; they also test that coincidental code matches do not flag a product. The holdout photos are 7 affected and 8 needs-information cases.
 
 Known limitations: outcomes are relative to the corpus (recalls published from 2024 onward), so an older recall could cover a `vehicle_out` vehicle; product phrases and query templates were written by the project author and are less varied than real queries; hard negatives are adjacent codes, not codes seen in the wild. Status: **v0.1**, one annotator.
