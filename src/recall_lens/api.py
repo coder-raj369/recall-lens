@@ -26,6 +26,7 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 from langgraph.types import Command
 from pydantic import Base64Bytes, BaseModel, Field
 
+from recall_lens import obs
 from recall_lens.agents import nodes
 from recall_lens.agents.graph import Nodes, build, postgres_checkpointer
 
@@ -51,6 +52,7 @@ def arbitrator(services: nodes.Services):
 def default_graph(stack: ExitStack):
     """The production graph on DATABASE_URL, with checkpoints so paused checks can resume."""
     url = os.environ["DATABASE_URL"]
+    obs.setup()
     # ponytail: one connection shared by all requests; pool it once checks run in parallel.
     services = nodes.Services(conn=stack.enter_context(psycopg.connect(url, autocommit=True)))
     graph_nodes = Nodes(

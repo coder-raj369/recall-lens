@@ -17,6 +17,7 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
 
 from recall_lens.agents.state import UNDETERMINED, CheckState
+from recall_lens.obs import traced
 
 Node = Callable[[CheckState], dict]
 
@@ -34,16 +35,11 @@ class Nodes:
 
 def build(nodes: Nodes, checkpointer=None):
     graph = StateGraph(CheckState)
-    graph.add_node("perceive", nodes.perceive)
-    graph.add_node("identify", nodes.identify)
-    graph.add_node("retrieve", nodes.retrieve)
-    graph.add_node("verify", nodes.verify)
-    graph.add_node("advise", nodes.advise)
+    for name in ("perceive", "identify", "retrieve", "verify", "advise", "arbitrate", "retake"):
+        if node := getattr(nodes, name):
+            graph.add_node(name, traced(name, node))
     if nodes.arbitrate:
-        graph.add_node("arbitrate", nodes.arbitrate)
         graph.add_edge("arbitrate", "advise")
-    if nodes.retake:
-        graph.add_node("retake", nodes.retake)
 
     def start(state: CheckState) -> str:
         return "perceive" if state.get("photo") else "identify"

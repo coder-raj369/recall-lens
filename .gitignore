@@ -30,3 +30,6 @@ evals/.cache/
 
 # Local database data directory (pgserver, when Docker is not available)
 .pgdata/
+
+# Local trace spans (OpenTelemetry JSON lines)
+.traces/
