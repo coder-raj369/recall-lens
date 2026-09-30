@@ -10,3 +10,4 @@ Significant design decisions are recorded here using a lightweight [Michael Nyga
 | [0004](0004-defer-fsis-ingestion.md) | Defer USDA FSIS ingestion until API access is available | Accepted |
 | [0005](0005-scheduled-ingestion-github-actions.md) | Schedule ingestion with GitHub Actions instead of Prefect | Accepted |
 | [0006](0006-local-open-vision-models.md) | Read photos with local open models (Florence-2 and OWLv2) | Accepted |
+| [0007](0007-evaluate-and-observe-without-paid-llm-calls.md) | Evaluate and observe without paid LLM calls | Accepted |

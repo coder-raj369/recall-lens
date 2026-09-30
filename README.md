@@ -6,7 +6,7 @@
 
 RecallLens is a multimodal, multi-agent system that identifies a product from a photo (or a receipt, or a voice query), extracts the identifiers that actually determine recall status (UPC, model number, lot code, best-by date, VIN), searches recalls from every major US recall authority, verifies whether *this specific unit* falls inside the recalled range, and explains the hazard and remedy with citations. When it cannot be sure, it says so.
 
-> **Status:** Phases 0–4 complete (foundations; ingestion and corpus; retrieval; perception; multi-agent orchestration). Phase 5 (evaluation and LLMOps) next. See [ROADMAP.md](ROADMAP.md) for the phased delivery plan.
+> **Status:** Phases 0–5 complete (foundations; ingestion and corpus; retrieval; perception; multi-agent orchestration; evaluation and LLMOps). Phase 6 (product and launch) next. See [ROADMAP.md](ROADMAP.md) for the phased delivery plan.
 
 ---
 
@@ -76,12 +76,12 @@ flowchart TD
 |---|---|
 | Language and tooling | Python 3.12, uv, Ruff, pytest |
 | Orchestration | LangGraph ([ADR-0002](docs/adr/0002-langgraph-orchestration.md)) |
-| Data | PostgreSQL 16 + pgvector, Redis (semantic cache) |
+| Data | PostgreSQL 16 + pgvector |
 | Ingestion | Scheduled GitHub Actions workflow ([ADR-0005](docs/adr/0005-scheduled-ingestion-github-actions.md)) |
 | Serving | FastAPI (SSE); local open models on CPU/Apple GPU ([ADR-0006](docs/adr/0006-local-open-vision-models.md)); GPU serving revisited in Phase 5 |
 | Frontend | Next.js PWA |
-| Evaluation | Custom harness, Ragas metrics, calibrated LLM-as-judge |
-| Observability | Langfuse, OpenTelemetry |
+| Evaluation | Custom harnesses per stage; replay gate in CI ([ADR-0007](docs/adr/0007-evaluate-and-observe-without-paid-llm-calls.md)) |
+| Observability | OpenTelemetry spans per graph step, locally or to any OTLP backend such as Langfuse |
 | Delivery | GitHub Actions (tests and eval gate), Docker, Fly.io |
 
 ## Evaluation
@@ -93,10 +93,10 @@ Evaluation is built alongside each capability, not after it.
 | Identifier extraction | 160 hand-labeled recalls (100 dev, 60 held-out test) | Field-level precision, recall, F1 |
 | Retrieval | 150 known-item queries (50 dev, 100 held-out test) | Recall@k, MRR; ablation from dense to hybrid + identifiers + rerank |
 | Perception | 150 labeled public photos (50 dev, 100 held-out test) | Field P/R/F1; whole photo vs + regions; photo-to-recall Recall@k |
-| End to end | 150 cases (48 dev, 102 held-out test) incl. hard negatives (same product, unlisted lot) | **False-negative rate**, unsafe answers, false alarms, abstention rate, citation accuracy |
-| Operations | Load tests | p50/p95 latency, cost per query, cache hit rate |
+| End to end | 300 cases (48 dev, 102 test, 150 fresh holdout) incl. hard negatives (same product, unlisted lot) | **False-negative rate**, unsafe answers, false alarms, abstention rate, citation accuracy |
+| Operations | Load test of the running API; Claude cost estimated from the prompts it would receive | Checks per second, p50/p95 latency per step, cost per check |
 
-The LLM judge is calibrated against human labels (Cohen's κ reported), and CI blocks any pull request that regresses the false-negative rate.
+Answers are built from templates, the cited notice and quotes verified to occur in it, so citations are checked in code; an LLM judge waits for an LLM budget ([ADR-0007](docs/adr/0007-evaluate-and-observe-without-paid-llm-calls.md)). CI replays verification on all 300 recorded cases and blocks any change that adds a missed recall or an unsafe answer.
 
 ### Results
 
@@ -221,13 +221,59 @@ What the evaluation showed:
 
 The API serves the same graph: `POST /checks` streams each step as a server-sent event and pauses for a clearer photo with a LangGraph interrupt, which resumes after a restart through Postgres checkpoints.
 
-#### Later phases
+#### Phase 5: quality, cost and latency
+
+Phase 4's error analysis was done on its test split, so the fixes are measured on a **fresh holdout** of 150 cases built afterwards from recalls, vehicles and photos no other split uses, and run once ([how it was built](evals/datasets/README.md#end-to-end)). All arms share the same retrieval; latency is per check with bge-m3 loaded.
+
+| Holdout (150 cases) | Accuracy | False negatives | Unsafe answers | False alarms | Abstentions | Right recall cited |
+|---|---|---|---|---|---|---|
+| Search only | 41% | 0% | 0% | 100% | 1% | 87% |
+| Exact code match | 53% | 48% | 62% | 10% | 1% | 97% |
+| **Graph, rules only** | **85%** | **3%** | **3%** | **6%** | 31% | **98%** |
+
+The same fixes on the Phase 4 test split, which guided them:
+
+| Phase 4 test split (102 cases) | Accuracy | False negatives | Unsafe answers | False alarms | Abstentions |
+|---|---|---|---|---|---|
+| Graph after Phase 4 | 78% | 5% | 19% | 3% | 22% |
+| **Graph after Phase 5** | **93%** | **2%** | **1%** | 3% | 29% |
+
+What changed, each fix a rule rather than a tuned threshold:
+
+- **Unreadable photos ask for a retake.** A photo that reads as a stray character, or cannot be opened, no longer yields "no recall found" for a product nobody checked.
+- **Identity survives spelling.** Brands match through possessives ("Lillie's") and one OCR slip in long words ("POLARS"), and multi-word vehicle makes ("NEW FLYER") are parsed whole.
+- **A brand's other products do not answer.** Question words ("is", "should", "lot") no longer count as shared product words, and a same-brand recall about a different product (Kirkland madeleines for Kirkland smoked salmon) is set aside. Wording like "certain VINs" makes a recall ask instead of covering every unit.
+- **A bare description asks instead of guessing.** "Is my space heater recalled?" names no brand or code, so the closest recall of that kind of product is offered as a question rather than answered with "no match"; a capitalized name the notice never mentions ("Hydro Flask") suppresses it. Switched off, holdout unsafe answers rise from 3% to 15%.
+- **The product is judged from its description.** The comparison also reads the notice's first sentence, where CPSC names the product its title leaves out.
+
+What the holdout still shows:
+
+- **Vehicle years no recall covers are asked about, not ruled out** (4 of 12 right). When the make is named, the rules ask which model even though the person named one; the answer is safe but not useful.
+- **Descriptive numbers look like model numbers.** "5-in-1" and "2-cup" matched models of other products, causing two of the three false alarms.
+- **Photos remain the weakest input** (67% right): in both missed recalls OCR misread the one distinguishing code ("CCA0558" for batch CCA06582, "X90003C1" for SKU K90003C1), so search never found the recall, and OCR noise such as "000000000000" can match another recall's code.
+
+**Latency under load.** Text checks against the running API ([load test](src/recall_lens/evals/load.py)); photo reading adds the Phase 3 perception time (5.7 s median).
+
+| Concurrent checks | Checks/s | Answer p50 / p95 | Errors |
+|---|---|---|---|
+| 1 | 8.9 | 0.09 / 0.26 s | 0 |
+| 4 | 21.2 | 0.19 / 0.25 s | 0 |
+| 8 | 21.9 | 0.36 / 0.44 s | 0 |
+
+Traces put nearly all of it in retrieval (0.17 s p50, 0.37 s p95; the CPU-bound query embedding); identification, verification and advice take milliseconds. The first load test failed most concurrent checks because requests shared one database connection and retrieval's transactions interleaved; each worker thread now has its own.
+
+**Cost.** Rules-only checks make no model calls. With Claude arbitration switched on, 40% of checks would call Claude Opus 5.5 once, with about 1,300 input tokens (6,100 at p95), which is an estimated **$0.03–0.09 per call and $11–35 per 1,000 checks** ([estimate](src/recall_lens/evals/cost.py): the exact prompts, counted at four characters per token, with 1,000–4,000 output tokens). Skipping calls once a recall already covers the unit, since they cannot change the answer, lowered the share of checks that call Claude from 67% to 40%.
+
+**Operations.** Every graph step is an OpenTelemetry span carrying the check id and what the step produced, written to a local file or sent to any OTLP backend such as Langfuse. Lookups on Open Food Facts and vPIC use one short retry and a per-host circuit breaker, so an outage costs a product name, not a stalled or failed check. CI replays verification on the 300 recorded cases in seconds and fails any change that adds a missed recall or unsafe answer.
+
+#### Headline numbers
 
 | Metric | Baseline | Current |
 |---|---|---|
-| End-to-end false-negative rate | 38% (exact code match) | 5% (graph, rules only) |
-| p95 latency under load | — | — |
-| Cost per query | — | — |
+| End-to-end false-negative rate | 48% (exact code match, holdout) | 3% (graph, holdout) |
+| Unsafe answers ("not recalled" when it is or may be) | 62% (exact code match, holdout) | 3% (graph, holdout) |
+| p95 latency, text check at 8 concurrent | — | 0.44 s |
+| Model cost per check | — | $0 rules only; est. $0.011–0.035 with Claude arbitration |
 
 ## Getting started
 
@@ -282,7 +328,10 @@ Check a product end to end (the Phase 4 graph) and evaluate it:
 ```bash
 uv run uvicorn recall_lens.api:app                  # POST /checks streams progress as server-sent events
 curl -N localhost:8000/checks -H 'content-type: application/json' -d '{"query": "CAREone antacid lot 1276118"}'
-uv run python -m recall_lens.evals.e2e --split test  # the graph against search-only and exact-match baselines
+uv run python -m recall_lens.evals.e2e --split holdout  # the graph against search-only and exact-match baselines
+uv run python -m recall_lens.evals.replay check        # the CI gate: verification on 300 recorded cases
+uv run python -m recall_lens.evals.load                # with the API running: throughput and latency
+uv run python -m recall_lens.evals.cost                # estimated cost of Claude arbitration (sends nothing)
 ```
 
 Photos are sent base64-encoded as `"photo"`; a check paused for a clearer photo resumes with `POST /checks/{id}/resume`. Claude arbitration and the single-agent baseline stay off unless `RECALL_LENS_ARBITRATE=1` is set with `uv sync --group llm` and an Anthropic API key, because every call is billed.
@@ -295,6 +344,7 @@ Without `--since`, ingestion is incremental: each agency restarts from its last 
 recall-lens/
 ├── docs/adr/              Architecture decision records
 ├── evals/datasets/        Labeled evaluation sets and labeling guidelines
+├── evals/fixtures/        Recorded end-to-end candidates and the gate's baseline
 ├── src/recall_lens/
 │   ├── db/                Schema migrations and runner
 │   ├── ingest/            Agency connectors, idempotent store, embedding, sync CLI
@@ -303,7 +353,8 @@ recall-lens/
 │   ├── perception/        Photo loading, OWLv2 regions, Florence-2 OCR, barcodes, VINs, photo search
 │   ├── agents/            LangGraph state and nodes, rule verifier, Claude arbitration, single-agent baseline
 │   ├── api.py             FastAPI app streaming checks as server-sent events
-│   └── evals/             Evaluation harnesses
+│   ├── obs.py             OpenTelemetry tracing of graph steps
+│   └── evals/             Evaluation harnesses, the CI replay gate, load and cost tools
 ├── tests/                 Test suite (real recall records as fixtures)
 └── .github/workflows/     CI and nightly ingestion
 ```

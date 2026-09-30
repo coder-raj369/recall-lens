@@ -11,7 +11,7 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 | [2](#phase-2--retrieval) | 3–4 | Retrieval | Complete |
 | [3](#phase-3--perception) | 5–6 | Perception | Complete |
 | [4](#phase-4--multi-agent-orchestration) | 7–8 | Multi-agent orchestration | Complete |
-| [5](#phase-5--evaluation-and-llmops) | 9–10 | Evaluation and LLMOps | Planned |
+| [5](#phase-5--evaluation-and-llmops) | 9–10 | Evaluation and LLMOps | Complete |
 | [6](#phase-6--product-and-launch) | 11–12 | Product and launch | Planned |
 
 ---
@@ -146,23 +146,23 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 **Goal:** make quality, cost and latency observable and protected by CI.
 
 **Exit criteria**
-- 300-case evaluation set; LLM judge calibrated with Cohen's κ reported.
-- Pull requests fail when the false-negative rate regresses.
-- p50/p95 latency and cost per query measured under load.
+- 300-case evaluation set, with a fresh holdout for measuring fixes. (The LLM judge and its calibration wait for an LLM budget; citations are checked in code, [ADR-0007](docs/adr/0007-evaluate-and-observe-without-paid-llm-calls.md).)
+- Changes fail CI when they add missed recalls or unsafe answers.
+- p50/p95 latency measured under load; cost per query measured for rules and estimated for Claude.
 
-**Planned commits**
-- [ ] `feat(evals): expand end-to-end set to 300 cases`
-- [ ] `feat(evals): add LLM-as-judge rubric for faithfulness and remedy accuracy`
-- [ ] `feat(evals): calibrate judge against human labels`
-- [ ] `ci: gate pull requests on false-negative rate`
-- [ ] `ci: run the full evaluation nightly and publish the report`
-- [ ] `feat(obs): trace graph nodes with Langfuse`
-- [ ] `feat(obs): version prompts in Langfuse`
-- [ ] `feat(llm): route requests between Haiku and Sonnet by task`
-- [ ] `feat(cache): add Redis semantic cache`
-- [ ] `feat(ingest): add circuit breakers around agency APIs`
-- [ ] `test(load): add Locust load tests and latency report`
-- [ ] `docs: publish Phase 5 quality, cost and latency results`
+**Commits** (revised during the phase: at a $0 LLM budget the judge, prompt versioning and model routing gave way to fixing and re-measuring the Phase 4 bugs; OpenTelemetry replaced a Langfuse SDK and stays Langfuse-compatible; the Redis cache was dropped; load and cost measurement found two more fixes)
+- [x] `chore: support a local pgserver database without Docker`
+- [x] `feat(evals): add a fresh 150-case held-out split`
+- [x] `fix(agents): never answer "no recall" from a photo that could not be read`
+- [x] `fix(agents): tie recalls through punctuation, OCR slips and multi-word makes`
+- [x] `fix(agents): keep a brand's other products from answering for yours`
+- [x] `fix(agents): ask about the closest recall instead of guessing "no match"`
+- [x] `fix(agents): judge the product from how the notice describes it`
+- [x] `feat(obs): trace every graph step with OpenTelemetry`
+- [x] `feat(http): skip failing hosts with a circuit breaker and keep lookups short`
+- [x] `ci: gate every change on missed recalls and unsafe answers`
+- [x] `test(load): measure latency under load and cost per check`
+- [x] `docs: publish Phase 5 quality, cost and latency results`
 
 ---
 
