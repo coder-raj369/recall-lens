@@ -101,3 +101,20 @@ def test_claude_arbitration_is_off_unless_explicitly_enabled(monkeypatch):
     monkeypatch.setenv("RECALL_LENS_ARBITRATE", "1")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
     assert callable(api.arbitrator(agent_nodes.Services()))  # built, not called: nothing billed
+
+
+def test_each_worker_thread_gets_its_own_database_connection(database_url):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    connections, together = api.ThreadConnections(database_url), threading.Barrier(4)
+
+    def backend(_):
+        together.wait()  # four threads at once, as under concurrent checks
+        return connections.execute("SELECT pg_backend_pid()").fetchone()[0]
+
+    with ThreadPoolExecutor(4) as pool:
+        backends = set(pool.map(backend, range(4)))
+    assert len(backends) == len(connections.opened) == 4
+    connections.close()
+    assert all(conn.closed for conn in connections.opened)

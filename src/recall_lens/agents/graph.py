@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
 
-from recall_lens.agents.state import UNDETERMINED, CheckState
+from recall_lens.agents.state import AFFECTED, UNDETERMINED, CheckState
 from recall_lens.obs import traced
 
 Node = Callable[[CheckState], dict]
@@ -31,6 +31,14 @@ class Nodes:
     advise: Node
     arbitrate: Node | None = None  # an LLM step; absent unless explicitly enabled
     retake: Node | None = None  # a human step; absent in batch runs such as evaluations
+
+
+def needs_arbitration(verdicts: list) -> bool:
+    """Some recall is undetermined and none covers the unit yet: once one does, the answer is
+    "affected" whatever the others turn out to be, so a call could not change it."""
+    return any(v["verdict"] == UNDETERMINED for v in verdicts) and not any(
+        v["verdict"] == AFFECTED for v in verdicts
+    )
 
 
 def build(nodes: Nodes, checkpointer=None):
@@ -51,8 +59,8 @@ def build(nodes: Nodes, checkpointer=None):
         return "perceive" if state.get("photo") else "identify"
 
     def after_verify(state: CheckState) -> str:
-        undecided = any(v["verdict"] == UNDETERMINED for v in state.get("verdicts", []))
-        return "arbitrate" if nodes.arbitrate and undecided else "advise"
+        wanted = nodes.arbitrate and needs_arbitration(state.get("verdicts", []))
+        return "arbitrate" if wanted else "advise"
 
     graph.add_conditional_edges(START, start, ["perceive", "identify"])
     if nodes.retake:

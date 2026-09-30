@@ -82,21 +82,25 @@ def _unusable(reason: str) -> dict:
     return {"verdict": UNDETERMINED, "reason": reason, "evidence": None, "confidence": None}
 
 
-def judge(client: anthropic.Anthropic, state: CheckState, notices: list[str]) -> list[dict]:
-    """Claude's cited verdict for each notice, in order; undetermined wherever it is unusable."""
+def prompt(state: CheckState, notices: list[str]) -> str:
+    """The message Claude reads: what the person gave, then the numbered notices."""
     identifiers = "\n".join(f"{kind}: {value}" for kind, value in state.get("identifiers", []))
-    prompt = f"<consumer>\n{state.get('text', '')}\n</consumer>\n" + (
+    text = f"<consumer>\n{state.get('text', '')}\n</consumer>\n" + (
         f"<identifiers>\n{identifiers}\n</identifiers>\n" if identifiers else ""
     )
-    prompt += "".join(
+    return text + "".join(
         f'<notice id="{i}">\n{body}\n</notice>\n' for i, body in enumerate(notices, 1)
     )
+
+
+def judge(client: anthropic.Anthropic, state: CheckState, notices: list[str]) -> list[dict]:
+    """Claude's cited verdict for each notice, in order; undetermined wherever it is unusable."""
     try:
         response = client.beta.messages.create(
             model=MODEL,
             max_tokens=16000,
             system=SYSTEM,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": prompt(state, notices)}],
             thinking={"type": "adaptive"},
             output_config={
                 "effort": "high",

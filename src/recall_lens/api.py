@@ -14,6 +14,7 @@ RECALL_LENS_ARBITRATE=1, because every call is billed.
 import logging
 import os
 import tempfile
+import threading
 import uuid
 from collections.abc import Iterator
 from contextlib import ExitStack, asynccontextmanager
@@ -49,12 +50,34 @@ def arbitrator(services: nodes.Services):
     return arbitrate(services, anthropic.Anthropic())
 
 
+class ThreadConnections:
+    """One database connection per worker thread, opened on first use.
+
+    Concurrent checks cannot share a connection: retrieval runs its own transactions to tune the
+    vector index per query, and interleaved they fail. Behaves like the thread's connection.
+    """
+
+    def __init__(self, url: str):
+        self.url, self.local, self.opened = url, threading.local(), []
+
+    def __getattr__(self, name: str):
+        if not hasattr(self.local, "conn"):
+            self.local.conn = psycopg.connect(self.url, autocommit=True)
+            self.opened.append(self.local.conn)
+        return getattr(self.local.conn, name)
+
+    def close(self) -> None:
+        for conn in self.opened:
+            conn.close()
+
+
 def default_graph(stack: ExitStack):
     """The production graph on DATABASE_URL, with checkpoints so paused checks can resume."""
     url = os.environ["DATABASE_URL"]
     obs.setup()
-    # ponytail: one connection shared by all requests; pool it once checks run in parallel.
-    services = nodes.Services(conn=stack.enter_context(psycopg.connect(url, autocommit=True)))
+    connections = ThreadConnections(url)
+    stack.callback(connections.close)
+    services = nodes.Services(conn=connections)
     graph_nodes = Nodes(
         perceive=nodes.perceive(services),
         identify=nodes.identify(services),

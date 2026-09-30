@@ -49,6 +49,15 @@ def test_photo_check_perceives_and_undecided_cases_are_arbitrated():
     assert visited == ["perceive", "identify", "retrieve", "verify", "arbitrate", "advise"]
 
 
+def test_arbitration_is_skipped_once_a_recall_covers_the_unit():
+    from recall_lens.agents.graph import needs_arbitration
+
+    affected, undetermined = {"verdict": AFFECTED}, {"verdict": UNDETERMINED}
+    assert needs_arbitration([undetermined])
+    assert not needs_arbitration([affected, undetermined])  # the answer is already "affected"
+    assert not needs_arbitration([affected])
+
+
 def test_without_an_arbitrator_undecided_cases_go_straight_to_advice():
     nodes, visited = recording_nodes(UNDETERMINED, arbitrate=False)
     run(nodes, {"query": "space heater"})
