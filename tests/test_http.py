@@ -35,6 +35,8 @@ def serve(responses):
 @pytest.fixture(autouse=True)
 def no_rate_limit(monkeypatch):
     monkeypatch.setattr(http, "DEFAULT_MIN_INTERVAL", 0)
+    monkeypatch.setattr(http, "_failures", {})  # every test starts with closed circuits
+    monkeypatch.setattr(http, "_open_until", {})
 
 
 def test_retries_transient_errors_then_succeeds():
@@ -65,4 +67,22 @@ def test_gives_up_after_retries():
     server, _ = serve([(500, b"")] * 3)
     with pytest.raises(urllib.error.HTTPError):
         http.fetch(f"http://127.0.0.1:{server.server_port}/", retries=2, backoff=0)
+    server.shutdown()
+
+
+def test_a_failing_host_is_skipped_until_a_trial_after_its_cooldown(monkeypatch):
+    import time
+
+    monkeypatch.setattr(http, "BREAKER_COOLDOWN", 0.2)
+    server, queue = serve([(503, b"")] * 3 + [(200, b"{}")])
+    url = f"http://127.0.0.1:{server.server_port}/"
+    for _ in range(3):
+        with pytest.raises(urllib.error.HTTPError):
+            http.fetch(url, retries=0)
+    with pytest.raises(http.CircuitOpen):
+        http.fetch(url, retries=0)
+    assert len(queue) == 1  # skipped without a request
+    time.sleep(0.25)
+    assert http.fetch(url, retries=0) == b"{}"  # the trial succeeds and closes the circuit
+    assert http._failures == {}
     server.shutdown()

@@ -27,15 +27,17 @@ def test_lookup_reads_name_and_brands(monkeypatch):
         "status": 1,
         "product": {"product_name": "Oyster Crackers", "brands": "Giant Eagle, "},
     }
-    monkeypatch.setattr(barcode, "get_json", lambda url, params: payload)
+    monkeypatch.setattr(barcode, "get_json", lambda url, params, **kwargs: payload)
     assert barcode.lookup("030034900371") == {"name": "Oyster Crackers", "brands": ["Giant Eagle"]}
 
 
-def test_lookup_returns_none_for_unknown_products(monkeypatch):
-    def not_found(url, params):
+def test_lookup_returns_none_for_unknown_products_and_outages(monkeypatch):
+    def not_found(url, params, **kwargs):
         raise urllib.error.HTTPError(url, 404, "Not Found", None, None)
 
-    monkeypatch.setattr(barcode, "get_json", not_found)
-    assert barcode.lookup("000") is None
-    monkeypatch.setattr(barcode, "get_json", lambda url, params: {"status": 0})
-    assert barcode.lookup("000") is None
+    def down(url, params, **kwargs):
+        raise urllib.error.URLError("connection refused")
+
+    for fake in (not_found, down, lambda url, params, **kwargs: {"status": 0}):
+        monkeypatch.setattr(barcode, "get_json", fake)
+        assert barcode.lookup("000") is None

@@ -1,5 +1,6 @@
 """Find vehicle identification numbers in OCR text and decode them with NHTSA vPIC."""
 
+import http.client
 import re
 
 from recall_lens.ingest.http import get_json
@@ -36,8 +37,15 @@ def find(text: str) -> set[str]:
 
 
 def decode(vin: str) -> dict:
-    """Make, model and model year from vPIC; empty values when NHTSA has no record."""
-    result = get_json(VPIC_URL.format(vin=vin), {"format": "json"})["Results"][0]
+    """Make, model and model year from vPIC; empty values when NHTSA has no record or is down.
+
+    A person is waiting, so one quick retry, and an outage only loses the vehicle's name.
+    """
+    try:
+        reply = get_json(VPIC_URL.format(vin=vin), {"format": "json"}, retries=1, timeout=5)
+        result = reply["Results"][0]
+    except (OSError, http.client.HTTPException, ValueError, KeyError, IndexError):
+        result = {}
     return {
         "make": result.get("Make") or None,
         "model": result.get("Model") or None,

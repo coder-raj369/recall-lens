@@ -15,7 +15,14 @@ def test_find_repairs_ocr_confusions_and_spaces():
 
 def test_decode_reads_vpic_values(monkeypatch):
     payload = {"Results": [{"Make": "HONDA", "Model": "Accord", "ModelYear": "2003"}]}
-    monkeypatch.setattr(vin, "get_json", lambda url, params: payload)
+    monkeypatch.setattr(vin, "get_json", lambda url, params, **kwargs: payload)
     assert vin.decode("1HGCM82633A004352") == {"make": "HONDA", "model": "Accord", "year": "2003"}
-    monkeypatch.setattr(vin, "get_json", lambda url, params: {"Results": [{"Make": ""}]})
-    assert vin.decode("L0SSCHL17MT120129") == {"make": None, "model": None, "year": None}
+    empty = {"make": None, "model": None, "year": None}
+    monkeypatch.setattr(vin, "get_json", lambda url, params, **kwargs: {"Results": [{"Make": ""}]})
+    assert vin.decode("L0SSCHL17MT120129") == empty
+
+    def down(url, params, **kwargs):
+        raise TimeoutError
+
+    monkeypatch.setattr(vin, "get_json", down)
+    assert vin.decode("1HGCM82633A004352") == empty  # an outage only loses the vehicle's name

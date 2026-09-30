@@ -3,7 +3,7 @@
 Requires the optional `ml` dependency group (zxing-cpp, Pillow).
 """
 
-import urllib.error
+import http.client
 
 from PIL import Image
 
@@ -25,13 +25,15 @@ def decode(image: Image.Image) -> set[str]:
 
 
 def lookup(upc: str) -> dict | None:
-    """Product name and brands from Open Food Facts, or None if the product is unknown."""
+    """Product name and brands from Open Food Facts; None if unknown or unreachable.
+
+    A person is waiting, so one quick retry, and an outage only loses the product's name.
+    """
     try:
-        data = get_json(PRODUCT_URL.format(code=upc), {"fields": "product_name,brands"})
-    except urllib.error.HTTPError as error:
-        if error.code == 404:
-            return None
-        raise
+        params = {"fields": "product_name,brands"}
+        data = get_json(PRODUCT_URL.format(code=upc), params, retries=1, timeout=5)
+    except (OSError, http.client.HTTPException, ValueError):  # 404, outage or garbled reply
+        return None
     if data.get("status") != 1:
         return None
     product = data.get("product") or {}
