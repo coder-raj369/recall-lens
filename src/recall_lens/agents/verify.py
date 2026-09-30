@@ -169,12 +169,15 @@ def parse_scope(title: str, text: str, identifiers: list[tuple[str, str]], affec
         start, end = _parse_date(m["start"]), _parse_date(m["end"], end=True)
         if start and end and start <= end:
             windows.append(DateWindow(_kind(m["label"]), start, end))
+    makes = sorted(codes.get("brand", ()), key=len, reverse=True)  # LAND ROVER before LAND
     vehicles = []
-    for entry in affected:  # "FORD TRANSIT (2023, 2024)" or "MOPAR BRAKE PEDAL (all years)"
-        m = re.fullmatch(r"(\S+) (.+) \((.+)\)", entry)
+    for entry in affected:  # "LAND ROVER DEFENDER (2020, 2021)" or "MOPAR BRAKE PEDAL (all years)"
+        m = re.fullmatch(r"(\S+ .+) \((.+)\)", entry)
         if m:
-            years = frozenset(int(y) for y in re.findall(r"\d{4}", m[3])) or None
-            vehicles.append(Vehicle(m[1], m[2], years))
+            name = m[1]
+            make = next((b for b in makes if name.startswith(f"{b} ")), name.split(" ", 1)[0])
+            years = frozenset(int(y) for y in re.findall(r"\d{4}", m[2])) or None
+            vehicles.append(Vehicle(make, name[len(make) + 1 :], years))
     return Scope(
         title=title,
         text=text,
@@ -211,15 +214,34 @@ def _words(text: str) -> set[str]:
     return {w[:-1] if w.endswith("S") and len(w) > 3 else w for w in words}
 
 
+def _one_edit(a: str, b: str) -> bool:
+    """Whether a and b differ by at most one substitution, insertion or deletion."""
+    if len(a) > len(b):
+        a, b = b, a
+    if len(b) - len(a) > 1:
+        return False
+    i = next((i for i, (x, y) in enumerate(zip(a, b, strict=False)) if x != y), len(a))
+    return a[i + (len(a) == len(b)) :] == b[i + 1 :]
+
+
 def _brand_match(scope: Scope, facts: Facts) -> str | None:
-    text = f" {' '.join(facts.text.upper().split())} "
+    """A brand of the recall the person named: all of it, or its first word when distinctive.
+
+    Punctuation is ignored ("Lillie's" names LILLIE), and words of six letters or more survive
+    one OCR slip ("POLARS" names POLARIS).
+    """
+    text = _plain(facts.text)
+    words = [w for w in set(text.split()) if len(w) >= 6]
     for brand in sorted(scope.brands):
-        tokens = [t for t in re.findall(r"[A-Z0-9'&-]+", brand) if t not in _GENERIC]
+        tokens = [t for t in _plain(brand).split() if t not in _GENERIC]
         if not tokens:
             continue
-        if f" {' '.join(tokens)} " in text or (len(tokens[0]) >= 5 and f" {tokens[0]} " in text):
+        first = tokens[0]
+        if f" {' '.join(tokens)} " in text or (len(first) >= 5 and f" {first} " in text):
             return brand
-        if any(tokens[0] in other or other in brand for other in facts.brands):
+        if len(first) >= 6 and any(_one_edit(first, w) for w in words):
+            return brand
+        if any(first in other or other in brand for other in facts.brands):
             return brand
     return None
 

@@ -80,6 +80,23 @@ SAXAGLIPTIN = parse_scope(
     "17241822, exp. date Sep-26",
     [("lot", "17241788"), ("lot", "17241822"), ("brand", "GLENMARK")],  # extraction missed one
 )
+SAUCE = parse_scope(
+    "Lillie's Q Buffalo Wing Sauce",
+    "Lillie's Q Buffalo Wing Sauce. Codes: Lot #002125, BEST BY: JAN/21/2026 Lot #002025",
+    [("brand", "LILLIE"), ("lot", "002125"), ("lot", "002025")],
+)
+RANGER = parse_scope(
+    "Polaris Industries Recalls Ranger XD 1500 Recreational Off-Road Vehicles",
+    "This recall involves Polaris RANGER XD 1500 vehicles.",
+    [("brand", "POLARIS")],
+)
+DEFENDER = parse_scope(
+    "Jaguar Land Rover recall: Seats",
+    "Land Rover is recalling certain Defender vehicles.",
+    [("brand", "LAND ROVER"), ("brand", "NEW FLYER")],
+    affected=["LAND ROVER DEFENDER (2020, 2021)", "NEW FLYER XE40 (2020)"],
+)
+FILTERS = parse_scope("Britax Recalls Car Seats", "Britax car seat recall.", [("brand", "BRITAX")])
 KITS_LIST = parse_scope(
     "Medline Convenience Kits",
     "Medline Kits labeled as CH OPEN HEART, ADULT CARDIAC KIT, Etc. (see recall documents for a "
@@ -141,6 +158,13 @@ PUMP_UNIT = parse_scope(
         (SAXAGLIPTIN, "Glenmark saxagliptin 2.5 mg, lot 17241821", AFFECTED),
         (SAXAGLIPTIN, "Glenmark saxagliptin 2.5 mg, lot 17241830", NOT_AFFECTED),
         (BED_RAILS, "ELENKER bed rail model HFK-5115", AFFECTED),
+        # Brands survive punctuation and one OCR slip; vehicle makes can be several words.
+        (SAUCE, "Lillie's Q buffalo wing sauce, lot 002125", AFFECTED),
+        (RANGER, "RANGER | POLARS", AFFECTED),
+        (DEFENDER, "2021 Land Rover Defender", AFFECTED),
+        (DEFENDER, "2019 Land Rover Defender", NOT_AFFECTED),
+        (DEFENDER, "my new Honda Civic", UNDETERMINED),  # "new" is not the make NEW FLYER
+        (FILTERS, "Brita water filter pitcher", UNDETERMINED),  # short words need an exact match
     ],
 )
 def test_verdicts(scope, text, expected):
