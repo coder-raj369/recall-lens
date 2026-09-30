@@ -27,3 +27,6 @@ evals/reports/
 
 # Downloaded evaluation inputs
 evals/.cache/
+
+# Local database data directory (pgserver, when Docker is not available)
+.pgdata/

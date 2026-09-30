@@ -233,6 +233,12 @@ The API serves the same graph: `POST /checks` streams each step as a server-sent
 
 **Prerequisites:** Python 3.12, [uv](https://docs.astral.sh/uv/), Docker.
 
+No Docker? [pgserver](https://github.com/orm011/pgserver) runs an embedded Postgres 16 with pgvector; keep its data in the git-ignored `.pgdata/` and use the URI it prints as `DATABASE_URL` in place of `docker compose up`:
+
+```bash
+uv run --with pgserver python -c "import pgserver; print(pgserver.get_server('.pgdata', cleanup_mode=None).get_uri())"
+```
+
 ```bash
 git clone https://github.com/coder-raj369/recall-lens.git
 cd recall-lens
