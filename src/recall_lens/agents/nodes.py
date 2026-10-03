@@ -101,12 +101,49 @@ def identify(services: Services):
     return run
 
 
+# Vehicle recalls of the makes a text names: their vehicle lists are what `covering` parses.
+# Going recall by recall keeps the make comparison to the vehicle recalls' few thousand makes.
+OF_NAMED_MAKES = """
+SELECT r.id, r.raw->'affected', m.makes
+FROM (SELECT ' ' || regexp_replace(upper(%s), '[^A-Z0-9]+', ' ', 'g') || ' ' AS text) q,
+     recalls r,
+     LATERAL (
+       SELECT array_agg(i.value) AS makes FROM recall_identifiers i
+       WHERE i.recall_id = r.id AND i.kind = 'brand'
+         AND q.text LIKE '%% ' || trim(regexp_replace(i.value, '[^A-Z0-9]+', ' ', 'g')) || ' %%'
+     ) m
+WHERE r.agency = 'nhtsa' AND m.makes IS NOT NULL
+ORDER BY r.recall_date DESC
+"""
+
+
+def covering(conn: psycopg.Connection, known: rules_verifier.Facts) -> list[int]:
+    """Recalls that list the make, model and model year the person named, newest first.
+
+    A popular model has dozens of recalls, more than one check compares, and "not your model
+    year" from the few that search ranked first is no answer while another recall covers that
+    year. So these are looked up exactly, with the verifier's own matching (about 10 ms).
+    """
+    scopes = {
+        recall_id: rules_verifier.parse_scope("", "", [("brand", m) for m in makes], affected or ())
+        for recall_id, affected, makes in conn.execute(OF_NAMED_MAKES, (known.text,))
+    }
+    named = rules_verifier.named_models(scopes.values(), known)
+    return [r for r, scope in scopes.items() if rules_verifier.covers_vehicle(scope, known, named)]
+
+
 def retrieve(services: Services):
     def run(state: CheckState) -> dict:
         text, codes = state.get("search_text", ""), state.get("codes", [])
         if not text and not codes:
             return {"candidates": []}
         hits = services.search(services.conn, text, limit=services.candidates, extra_codes=codes)
+        ranked = [h.recall_id for h in hits]
+        exact = covering(services.conn, facts(state))
+        if exact:  # first, in search order where search found them too
+            exact.sort(key=lambda r: ranked.index(r) if r in ranked else len(ranked))
+            ranked = exact + [r for r in ranked if r not in exact]
+            hits = retrieval.hits(services.conn, ranked[: services.candidates])
         candidates = [
             {"recall_id": h.recall_id, "agency": h.agency, "source_id": h.source_id,
              "title": h.title, "source_url": h.source_url}
@@ -160,8 +197,9 @@ POSSIBLE = (
 def judge(candidates: list, scopes: list, known: rules_verifier.Facts) -> list[dict]:
     """The rules' verdict on each candidate recall, given its scope (ADR-0003)."""
     verdicts = []
+    named = rules_verifier.named_models(scopes, known)
     for candidate, scope in zip(candidates, scopes, strict=True):
-        verdict, reason, evidence = rules_verifier.verify(scope, known)
+        verdict, reason, evidence = rules_verifier.verify(scope, known, named)
         verdicts.append(
             {"source_id": candidate["source_id"], "agency": candidate["agency"],
              "verdict": verdict, "reason": reason, "evidence": evidence, "method": "rules",

@@ -10,8 +10,10 @@ the unit is clearly outside the listed scope; anything else is "needs more infor
 
 import calendar
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date
+from itertools import pairwise
 
 from recall_lens.agents.state import AFFECTED, NEEDS_INFO, NOT_AFFECTED, UNDETERMINED
 
@@ -190,7 +192,7 @@ def parse_scope(title: str, text: str, identifiers: list[tuple[str, str]], affec
     for entry in affected:  # "LAND ROVER DEFENDER (2020, 2021)" or "MOPAR BRAKE PEDAL (all years)"
         m = re.fullmatch(r"(\S+ .+) \((.+)\)", entry)
         if m:
-            name = m[1]
+            name = re.sub(r"(?i)\b(?:redundant|duplicate) ", "", m[1])  # NHTSA entry marks
             make = next((b for b in makes if name.startswith(f"{b} ")), name.split(" ", 1)[0])
             years = frozenset(int(y) for y in re.findall(r"\d{4}", m[2])) or None
             vehicles.append(Vehicle(make, name[len(make) + 1 :], years))
@@ -297,16 +299,63 @@ def _plain(text: str) -> str:
     return f" {' '.join(re.sub(r'[^A-Z0-9 ]', ' ', text.upper()).split())} "
 
 
+def _compact(text: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", text.upper())
+
+
 def _vehicle_matches(scope: Scope, facts: Facts) -> list[Vehicle]:
-    """Affected vehicles the user named; short or numeric model names ("1500") need the make."""
+    """Affected vehicles the user named; short or numeric model names ("1500") need the make.
+
+    Hyphens and spaces do not matter: "F150" names the F-150 and "RAV 4" the RAV4.
+    """
     text = _plain(facts.text)
+    words = text.split()
+    spelled = {*words, *map("".join, pairwise(words))}
     matches = []
     for v in scope.vehicles:
         model = _plain(v.model)
         distinctive = len(model.strip().replace(" ", "")) >= 4 and re.search(r"[A-Z]", model)
-        if model in text and (distinctive or _plain(v.make) in text):
+        named = model in text or _compact(v.model) in spelled
+        if named and (distinctive or _plain(v.make) in text):
             matches.append(v)
     return matches
+
+
+def named_models(scopes: Iterable[Scope], facts: Facts) -> frozenset[str]:
+    """The models the person named among those the recalls list, without spaces or hyphens.
+
+    A name counts only where it is not the end of a longer one: "Grand Cherokee" names no
+    CHEROKEE. A longer name that only adds to it keeps both, a GLB 250 4MATIC being a GLB 250,
+    and so does one that only spells out the make: upfitters list a "FORD TRANSIT 350".
+    """
+    found = {
+        (_plain(v.make), _plain(v.model))
+        for scope in scopes
+        for v in _vehicle_matches(scope, facts)
+    }
+    names = {model for _, model in found}
+
+    def inside_another(make: str, model: str) -> bool:
+        for name in names:
+            at = name.find(model)
+            before = name[: at + 1]  # the words ahead of it: " GRAND ", or the make " FORD "
+            if at > 0 and not (make.endswith(before) or before.endswith(make)):
+                return True
+        return False
+
+    return frozenset(_compact(model) for make, model in found if not inside_another(make, model))
+
+
+def covers_vehicle(scope: Scope, facts: Facts, named: frozenset[str]) -> bool:
+    """Whether the recall lists a make and model the person named, for a model year they gave."""
+    text = _plain(facts.text)
+    years = {int(y) for y in _YEAR.findall(facts.text)}
+    return any(
+        _compact(v.model) in named
+        and _plain(v.make) in text
+        and (v.years is None or years & v.years)
+        for v in _vehicle_matches(scope, facts)
+    )
 
 
 def _user_dates(facts: Facts) -> list[tuple[str, date]]:
@@ -331,8 +380,12 @@ def _distinctive(kind: str, code: str) -> bool:
     return len(code) >= 8 if code.isdigit() else len(code) >= 6
 
 
-def verify(scope: Scope, facts: Facts) -> tuple[str, str, str | None]:
-    """Return (verdict, reason, evidence quoted from the notice)."""
+def verify(scope: Scope, facts: Facts, named=frozenset()) -> tuple[str, str, str | None]:
+    """Return (verdict, reason, evidence quoted from the notice).
+
+    `named` is `named_models` over all the recalls being compared: knowing which listed model
+    the person meant, a recall of another model does not claim the vehicle.
+    """
     listed = {kind: {_key(v) for v in scope.codes.get(kind, ())} for kind in CODE_KINDS}
     typed = {_key(c) for values in facts.typed.values() for c in values}
 
@@ -389,6 +442,8 @@ def verify(scope: Scope, facts: Facts) -> tuple[str, str, str | None]:
     # 2. Vehicles: the recall names affected models and model years.
     if vehicle_years:
         matched = _vehicle_matches(scope, facts)
+        if named:
+            matched = [v for v in matched if _compact(v.model) in named]
         if not matched:
             makes = {v.make for v in scope.vehicles}
             if any(_plain(make) in _plain(facts.text) for make in makes):

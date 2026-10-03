@@ -94,6 +94,40 @@ def test_retrieve_passes_codes_and_returns_plain_candidates(conn):
     assert nodes.retrieve(services)({"search_text": "", "codes": []}) == {"candidates": []}
 
 
+def test_retrieve_puts_recalls_of_the_named_vehicle_and_year_first(conn):
+    from datetime import date
+
+    from recall_lens.ingest import store
+    from recall_lens.ingest.models import Recall
+
+    listed = {
+        "24V001000": "FORD EXPEDITION (2018, 2019)",
+        "25V002000": "FORD EXPEDITION (2015, 2016)",
+        "25V003000": "FORD EXPEDITION MAX (2016)",
+    }
+    for source_id, vehicle in listed.items():
+        recall = Recall(
+            agency="nhtsa", source_id=source_id, title="Ford Motor Company recall: Seat Belts",
+            recall_date=date(2025, 1, 1), raw={"affected": [vehicle]},
+            identifiers=frozenset({("brand", "FORD")}),
+        )  # fmt: skip
+        store.upsert(conn, recall)
+    conn.commit()
+    other = conn.execute("SELECT id FROM recalls WHERE source_id = '24V001000'").fetchone()[0]
+    services = nodes.Services(
+        conn=conn, search=lambda conn, text, **_: nodes.retrieval.hits(conn, [other])
+    )
+
+    def found(text):
+        update = nodes.retrieve(services)({"search_text": text, "text": text})
+        return [c["source_id"] for c in update["candidates"]]
+
+    # Search ranked only the recall of other model years; the one covering 2016 goes first.
+    assert found("2016 Ford Expedition recall") == ["25V002000", "24V001000"]
+    assert found("2016 Expedition recall") == ["24V001000"]  # no make: not looked up
+    assert found("Ford Expedition recall") == ["24V001000"]  # no year: nothing to look up
+
+
 def test_verify_checks_each_candidate_against_its_stored_scope(conn):
     from datetime import date
 
@@ -159,6 +193,32 @@ def test_verify_asks_about_the_closest_recall_for_a_bare_description(conn):
     assert asked["verdict"] == NEEDS_INFO and asked["reason"] == nodes.POSSIBLE
     coded = {**state, "codes": ["SH-100"], "text": "space heater SH-100"}
     assert nodes.verify(services)(coded)["verdicts"][0]["verdict"] == UNDETERMINED
+
+
+def vehicle_verdicts(query, *lists):
+    """The rules' verdicts on recalls that list these vehicles."""
+    from recall_lens.agents.verify import parse_scope
+
+    known = nodes.facts({"text": query, "identifiers": [], "codes": []})
+    scopes = [
+        parse_scope("Recall", "Certain vehicles.", [("brand", vehicles[0].split()[0])], vehicles)
+        for vehicles in lists
+    ]
+    candidates = [candidate(i) for i in range(len(scopes))]
+    return [v["verdict"] for v in nodes.judge(candidates, scopes, known)]
+
+
+def test_judge_takes_the_longest_vehicle_model_the_person_named():
+    # "Grand Cherokee" names no Cherokee, so a Cherokee recall does not claim it.
+    cherokee, grand = ["JEEP CHEROKEE (2020)"], ["JEEP GRAND CHEROKEE (2021)"]
+    assert vehicle_verdicts("2020 Jeep Grand Cherokee", cherokee) == [AFFECTED]  # all it knows
+    assert vehicle_verdicts("2020 Jeep Grand Cherokee", cherokee, grand) == [
+        NEEDS_INFO,
+        NOT_AFFECTED,
+    ]
+    # A longer name that only spells out the make is the same model.
+    promaster, upfitted = ["RAM PROMASTER (2022)"], ["BRAUN RAM PROMASTER (2022)"]
+    assert vehicle_verdicts("2022 Ram ProMaster", promaster, upfitted) == [AFFECTED, AFFECTED]
 
 
 def candidate(i, recall_id=None):

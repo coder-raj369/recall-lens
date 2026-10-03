@@ -123,6 +123,12 @@ PADS = parse_scope(  # the title never says "protector"; the brand swallows "mat
     "Twin through California King.",
     [("brand", "AVOCADO MATTRESS")],
 )
+F150 = parse_scope(
+    "Ford Motor Company recall: Electrical System",
+    "Ford is recalling certain 2021 F-150 vehicles.",
+    [("brand", "FORD")],
+    affected=["FORD F-150 (2021)", "FORD redundant FIESTA ST (2021)"],
+)
 FILTERS = parse_scope("Britax Recalls Car Seats", "Britax car seat recall.", [("brand", "BRITAX")])
 KITS_LIST = parse_scope(
     "Medline Convenience Kits",
@@ -191,6 +197,9 @@ PUMP_UNIT = parse_scope(
         (DEFENDER, "2021 Land Rover Defender", AFFECTED),
         (DEFENDER, "2019 Land Rover Defender", NOT_AFFECTED),
         (DEFENDER, "my new Honda Civic", UNDETERMINED),  # "new" is not the make NEW FLYER
+        (F150, "Is my 2021 Ford F150 recalled?", AFFECTED),  # hyphens and spaces do not matter
+        (F150, "2019 Ford F 150", NOT_AFFECTED),
+        (F150, "2021 Ford Fiesta ST", AFFECTED),  # listed as "redundant FIESTA ST"
         (FILTERS, "Brita water filter pitcher", UNDETERMINED),  # short words need an exact match
         # A brand's other products do not answer for yours; "is" is not a product word.
         (MADELEINES, "Kirkland Signature smoked salmon 12 oz, lot 8512801275", UNDETERMINED),
