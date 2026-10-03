@@ -4,9 +4,9 @@
 
 **Point a camera at a product, car, food or medicine and find out whether it has been recalled, with evidence.**
 
-RecallLens is a multimodal, multi-agent system that identifies a product from a photo (or a receipt, or a voice query), extracts the identifiers that actually determine recall status (UPC, model number, lot code, best-by date, VIN), searches recalls from every major US recall authority, verifies whether *this specific unit* falls inside the recalled range, and explains the hazard and remedy with citations. When it cannot be sure, it says so.
+RecallLens is a multimodal, multi-agent system that identifies a product from a photo or a typed description, extracts the identifiers that actually determine recall status (UPC, model number, lot code, best-by date, VIN), searches recalls from CPSC, FDA and NHTSA, verifies whether *this specific unit* falls inside the recalled range, and explains the hazard and remedy with citations. When it cannot be sure, it says so.
 
-> **Status:** Phases 0–5 complete (foundations; ingestion and corpus; retrieval; perception; multi-agent orchestration; evaluation and LLMOps). Phase 6 (product and launch) next. See [ROADMAP.md](ROADMAP.md) for the phased delivery plan.
+> **Status:** Phases 0–5 complete (foundations; ingestion and corpus; retrieval; perception; multi-agent orchestration; evaluation and LLMOps). Phase 6 (product and launch) is in progress: the web client, exact vehicle lookup and watchlist alerts are built, and deployment is next. See [ROADMAP.md](ROADMAP.md) for the phased delivery plan.
 
 ---
 
@@ -29,25 +29,25 @@ RecallLens treats it as one. Perception reads the label, extraction turns it int
 
 ```mermaid
 flowchart TD
-    UI["Next.js PWA<br/>camera · voice · watchlist"] -->|SSE| API["FastAPI gateway<br/>auth · rate limits · PII purge"]
-    API --> SUP["LangGraph supervisor<br/>checkpointed state · human-in-the-loop"]
+    UI["Web client, an installable page<br/>description · photo · watch"] -->|SSE| API["FastAPI<br/>streams each step · photos never stored"]
+    API --> SUP["LangGraph graph<br/>checkpointed state · pauses for a clearer photo"]
 
-    SUP --> PER["Perception<br/>OWLv2 crop → VLM read<br/>receipt parsing"]
-    SUP --> IDN["Identifier<br/>GLiNER + rules<br/>UPC → Open Food Facts · VIN → vPIC"]
-    SUP --> RET["Retrieval<br/>dense + full-text → filters → rerank"]
-    SUP --> VER["Verifier<br/>deterministic range checks<br/>+ LLM judgment → confidence"]
-    SUP --> ADV["Advisor<br/>cited answer · remedy<br/>abstains below threshold"]
+    SUP --> PER["Perceive<br/>OWLv2 regions → Florence-2 OCR<br/>barcodes · VINs"]
+    SUP --> IDN["Identify<br/>rules + GLiNER<br/>UPC → Open Food Facts · VIN → vPIC"]
+    SUP --> RET["Retrieve<br/>exact code and vehicle lookups<br/>dense + full-text, fused"]
+    SUP --> VER["Verify<br/>deterministic scope checks<br/>Claude arbitration, off by default"]
+    SUP --> ADV["Advise<br/>cited answer · hazard · remedy<br/>asks when it cannot tell"]
 
-    RET --> DB[("Postgres 16 + pgvector<br/>recalls · identifiers · chunks")]
-    ING["Nightly ingestion<br/>CPSC · FDA · FSIS · NHTSA"] -->|normalize · extract · embed · upsert| DB
-    ING --> ALERT["Watchlist diff → alerts"]
+    RET --> DB[("Postgres 16 + pgvector<br/>recalls · identifiers · chunks · watchlist")]
+    ING["Nightly ingestion<br/>CPSC · FDA · NHTSA"] -->|normalize · extract · embed · upsert| DB
+    ING --> ALERT["Watchlist re-check → email alerts"]
 ```
 
-1. **Perceive.** A zero-shot detector locates the label, barcode and lot-code regions; crops are passed to a vision-language model, which is far more reliable on small print than a full-frame read.
-2. **Identify.** A zero-shot NER model and rule-based parsers produce typed identifiers. Barcodes resolve through Open Food Facts; VINs decode through NHTSA vPIC.
-3. **Retrieve.** Exact identifier matches short-circuit search. Otherwise, hybrid retrieval (vector + Postgres full-text, fused and filtered by agency, category and date) feeds a cross-encoder reranker.
-4. **Verify.** Lot, date and model ranges are checked in code. The LLM only arbitrates what rules cannot decide, and it returns a calibrated confidence.
-5. **Advise.** Answers must cite the recall notice. Below the confidence threshold, the system abstains and asks for a better photo instead of guessing.
+1. **Perceive.** A zero-shot detector locates the label, barcode and rating-plate regions; Florence-2 reads the whole photo and each region, and barcodes and VINs are decoded directly.
+2. **Identify.** Rule-based parsers and a zero-shot NER model produce typed identifiers. Barcodes resolve through Open Food Facts; VINs decode through NHTSA vPIC.
+3. **Retrieve.** Exact matches come first: codes against stored identifiers, and a named make, model and model year against each recall's vehicle list. Hybrid retrieval (vector + IDF-weighted full-text, fused) fills the rest; a cross-encoder reranker is available and off by default.
+4. **Verify.** Lot, date, model and vehicle scopes are checked in code. Claude arbitration of what the rules cannot decide is built and off by default, because every call is billed.
+5. **Advise.** Answers cite the recall notice and quote it. When the rules cannot settle it, the system asks for the missing detail or a clearer photo instead of guessing.
 
 ## Design principles
 
@@ -66,9 +66,8 @@ flowchart TD
 | Sentence Similarity / Feature Extraction | bge-m3 | Dense embeddings | In use (Phase 1) |
 | Text Ranking | bge-reranker-v2-m3 | Cross-encoder reranking (opt-in) | In use (Phase 2) |
 | Text Generation | Claude Opus 5.5 | Arbitrates matches the rules cannot decide; single-agent baseline | Built, off by default (billed per call) |
-| Document Question Answering | Florence-2 / Donut | Parse receipts into line items | Phase 6 |
-| Image Feature Extraction | SigLIP | Visual search for photos with no legible text | Planned |
-| Automatic Speech Recognition *(stretch)* | whisper-large-v3-turbo | Voice queries | Stretch |
+
+Considered and not built: receipt parsing (Document Question Answering), visual search with SigLIP for photos without legible text (Image Feature Extraction), and voice queries (Automatic Speech Recognition).
 
 ## Tech stack
 
@@ -78,11 +77,11 @@ flowchart TD
 | Orchestration | LangGraph ([ADR-0002](docs/adr/0002-langgraph-orchestration.md)) |
 | Data | PostgreSQL 16 + pgvector |
 | Ingestion | Scheduled GitHub Actions workflow ([ADR-0005](docs/adr/0005-scheduled-ingestion-github-actions.md)) |
-| Serving | FastAPI (SSE); local open models on CPU/Apple GPU ([ADR-0006](docs/adr/0006-local-open-vision-models.md)); GPU serving revisited in Phase 5 |
-| Frontend | Next.js PWA |
+| Serving | FastAPI (SSE); local open models on CPU/Apple GPU ([ADR-0006](docs/adr/0006-local-open-vision-models.md)) |
+| Frontend | A static, installable web page served by the API: no framework and no build step |
 | Evaluation | Custom harnesses per stage; replay gate in CI ([ADR-0007](docs/adr/0007-evaluate-and-observe-without-paid-llm-calls.md)) |
 | Observability | OpenTelemetry spans per graph step, locally or to any OTLP backend such as Langfuse |
-| Delivery | GitHub Actions (tests and eval gate), Docker, Fly.io |
+| Delivery | GitHub Actions (tests and evaluation gate) |
 
 ## Evaluation
 
@@ -120,13 +119,13 @@ Populated as phases complete. No numbers are reported before they are measured.
 | Kind | Rules only | GLiNER only | Rules + GLiNER (all kinds) | **Production**: rules for codes, GLiNER for brands |
 |---|---|---|---|---|
 | Brand | — | 0.74 / 0.81 / 0.78 | 0.74 / 0.81 / 0.78 | **0.74 / 0.81 / 0.77** |
-| Model | 0.91 / 0.28 / 0.43 | 0.46 / 0.37 / 0.41 | 0.50 / 0.46 / 0.48 | **0.91 / 0.28 / 0.43** |
+| Model | 0.95 / 0.28 / 0.43 | 0.46 / 0.37 / 0.41 | 0.51 / 0.46 / 0.49 | **0.95 / 0.28 / 0.43** |
 | Lot / serial | 0.92 / 0.75 / 0.82 | 0.57 / 0.16 / 0.25 | 0.81 / 0.79 / 0.80 | **0.92 / 0.75 / 0.82** |
 | UPC / GTIN | 1.00 / 0.50 / 0.67 | 0.64 / 0.35 / 0.45 | 0.74 / 0.54 / 0.62 | **1.00 / 0.50 / 0.67** |
 | NDC | 1.00 / 1.00 / 1.00 | — | 1.00 / 1.00 / 1.00 | **1.00 / 1.00 / 1.00** |
-| **All (micro)** | 0.93 / 0.41 / 0.57 | 0.62 / 0.40 / 0.49 | 0.72 / 0.70 / 0.71 | **0.85 / 0.63 / 0.73** |
+| **All (micro)** | 0.94 / 0.41 / 0.57 | 0.62 / 0.40 / 0.49 | 0.72 / 0.70 / 0.71 | **0.86 / 0.63 / 0.73** |
 
-Values are precision / recall / F1. The production configuration was chosen on the dev split, where letting GLiNER add codes lowered code F1 from 0.59 to 0.55. Keeping codes rule-based holds their precision at 0.93 by design: a wrong lot or model number is worse than a missing one, because the verifier can ask for a clearer photo when a code is missing but cannot detect a confidently wrong one. The main gaps are unlabeled model names and bare UPC digits, which Phase 3's label reading targets.
+Values are precision / recall / F1, for the current rules: Phase 6 stopped reading sizes such as "5-in-1" as model numbers, which raised model precision from 0.91 to 0.95. The production configuration was chosen on the dev split, where letting GLiNER add codes lowered code F1 from 0.59 to 0.55. Keeping codes rule-based holds their precision at 0.94 by design: a wrong lot or model number is worse than a missing one, because the verifier can ask for a clearer photo when a code is missing but cannot detect a confidently wrong one. The main gaps are unlabeled model names and bare UPC digits, which Phase 3's label reading targets.
 
 #### Phase 2: retrieval
 
@@ -266,13 +265,57 @@ Traces put nearly all of it in retrieval (0.17 s p50, 0.37 s p95; the CPU-bound 
 
 **Operations.** Every graph step is an OpenTelemetry span carrying the check id and what the step produced, written to a local file or sent to any OTLP backend such as Langfuse. Lookups on Open Food Facts and vPIC use one short retry and a per-host circuit breaker, so an outage costs a product name, not a stalled or failed check. CI replays verification on the 300 recorded cases in seconds and fails any change that adds a missed recall or unsafe answer.
 
+#### Phase 6: vehicles, descriptive numbers and the watchlist
+
+Phase 5's holdout named two rule problems: vehicle recalls asked "which model is yours?" of people who had named their model, and sizes such as "5-in-1" were read as model numbers. Fixing the first exposed a worse one. These fixes were chosen from the holdout's errors, which makes it a seen split like the other two, so the vehicle changes are also measured on vehicles drawn from the corpus itself.
+
+| End to end, graph (rules only) | Accuracy | False negatives | Unsafe answers | False alarms | Abstentions | Right recall cited |
+|---|---|---|---|---|---|---|
+| Dev (48 cases) | 92% → **96%** | 0% | 0% | 0% | 27% | 89% |
+| Phase 4 test split (102) | 93% → **96%** | 2% | 1% | 3% | 29% → 26% | 100% |
+| Phase 5 holdout (150) | 85% → **93%** | 3% | 3% | 6% → 2% | 31% → 27% | 98% |
+
+Sixteen of the 300 answers changed and all sixteen became right; no split misses more recalls or gives more unsafe answers.
+
+| 600 vehicles a recall lists, asked as "2021 Ford F-150 recall" | Answered "covered" | Asked a question | Answered "not affected" |
+|---|---|---|---|
+| Before | 593 | 6 | 1 |
+| **After** | **600** | 0 | 0 |
+
+| 600 vehicles of a listed model, in a model year no recall lists | Answered "not affected" | Asked a question | Answered "covered" |
+|---|---|---|---|
+| Before | 129 | 406 | 65 |
+| **After** | **497** | 34 | 69 |
+
+A further 3,000 listed vehicles were all answered "covered".
+
+What changed:
+
+- **Listed vehicles are looked up exactly.** A popular model has dozens of recalls and a check compares five. When search ranked the wrong five first, the answer was "not your model year", or a question, while another recall covered that year (7 of 600). Recalls that list the make, model and model year the person named now come first, found with the verifier's own matching in about 10 ms.
+- **The longest model name wins.** "Grand Cherokee" no longer names a Cherokee, and "E-Transit" no longer names a Transit; such a recall asks instead of claiming the vehicle. A name that only adds to a listed one still counts: a "GLC 300 4MATIC" is covered by a recall of the "GLC 300", which is how its maker lists it. Hyphens and spaces are ignored ("F150", "RAV 4"), and NHTSA's "redundant" marks on model names are dropped.
+- **"Which model is yours?" is asked only when it could be theirs:** a listed model of their model year and, once some recall lists the model they named, only a version of it ("740i xDrive" for "740i") or a name inside it. Questions on the 600 unlisted vehicles fell from 406 to 34.
+- **A nickname no longer hides a vehicle.** "Chevy Silverado" named no listed make and no full model name, and was answered "no match". It shares its name with the listed Silverado 2500, so it is now asked about.
+- **Sizes and names are not codes.** "5-in-1", "2-cup" and "24-count" are no longer model numbers (two of the holdout's three false alarms), and the "3" of "Tesla Model 3" is no longer a code, which had sent retrieval to unrelated recalls that list a code "3" and answered "no match".
+
+What the vehicle checks still show:
+
+- **A base name can claim a different model.** Most of the 69 "covered" answers for unlisted vehicles come from a base name: an "Escape PHEV" is matched by a recall of the "Escape". That is right when the maker lists one name for every version and a false alarm when the versions differ (a Range Rover Evoque is not a Range Rover); the rules prefer the false alarm.
+- **Makes are matched as written.** "Chevy" and "Mercedes" are not recognized as Chevrolet and Mercedes-Benz, so those questions skip the exact lookup and rely on search and on the model name.
+
+**Latency** with the lookup in place: 7.4 checks/s alone (0.11 s median, 0.33 s p95), 18.4 at four concurrent (0.21 / 0.32 s) and 20.2 at eight (0.40 / 0.50 s), with no errors. Retrieval takes 0.20 s at the median, up from 0.17 s.
+
+**Web client.** The API serves an installable page: describe a product or add a photo of its label, watch each step arrive, and read an answer that cites and quotes the notice. A photo is downscaled in the browser, read once and never stored; an unreadable one asks for a retake and resumes the same check.
+
+**Watchlist.** Any answer can be watched. The check's text and codes (never the photo) are kept under an unguessable token; `python -m recall_lens.watch` re-checks every watched product after ingestion and emails each recall that newly covers one, once; the email's link stops the watch. Alerts go by SMTP and only to addresses listed in the configuration, because an open form must not be able to email strangers. The job is tested with a stubbed mail server and was dry-run against the real corpus; it has not yet been run against a real mail server.
+
 #### Headline numbers
 
 | Metric | Baseline | Current |
 |---|---|---|
 | End-to-end false-negative rate | 48% (exact code match, holdout) | 3% (graph, holdout) |
 | Unsafe answers ("not recalled" when it is or may be) | 62% (exact code match, holdout) | 3% (graph, holdout) |
-| p95 latency, text check at 8 concurrent | — | 0.44 s |
+| Listed vehicles answered "covered" (600 from the corpus) | 98.8% (search alone picks the five recalls) | 100% (exact lookup first) |
+| p95 latency, text check at 8 concurrent | — | 0.50 s |
 | Model cost per check | — | $0 rules only; est. $0.011–0.035 with Claude arbitration |
 
 ## Getting started
@@ -323,10 +366,10 @@ uv run python -m recall_lens.perception photo.jpg --no-detection   # whole photo
 uv run python -m recall_lens.evals.photos --split test              # downloads the photos once
 ```
 
-Check a product end to end (the Phase 4 graph) and evaluate it:
+Check a product end to end, in the browser or over the API, and evaluate it:
 
 ```bash
-uv run uvicorn recall_lens.api:app                  # POST /checks streams progress as server-sent events
+uv run uvicorn recall_lens.api:app                  # the web client is at http://localhost:8000
 curl -N localhost:8000/checks -H 'content-type: application/json' -d '{"query": "CAREone antacid lot 1276118"}'
 uv run python -m recall_lens.evals.e2e --split holdout  # the graph against search-only and exact-match baselines
 uv run python -m recall_lens.evals.replay check        # the CI gate: verification on 300 recorded cases
@@ -334,7 +377,14 @@ uv run python -m recall_lens.evals.load                # with the API running: t
 uv run python -m recall_lens.evals.cost                # estimated cost of Claude arbitration (sends nothing)
 ```
 
-Photos are sent base64-encoded as `"photo"`; a check paused for a clearer photo resumes with `POST /checks/{id}/resume`. Claude arbitration and the single-agent baseline stay off unless `RECALL_LENS_ARBITRATE=1` is set with `uv sync --group llm` and an Anthropic API key, because every call is billed.
+`POST /checks` streams progress as server-sent events. Photos are sent base64-encoded as `"photo"`; a check paused for a clearer photo resumes with `POST /checks/{id}/resume`. Claude arbitration and the single-agent baseline stay off unless `RECALL_LENS_ARBITRATE=1` is set with `uv sync --group llm` and an Anthropic API key, because every call is billed.
+
+Watch products and send alerts (addresses and SMTP settings are described in `.env.example`):
+
+```bash
+uv run python -m recall_lens.ingest      # new recalls first
+uv run python -m recall_lens.watch       # then re-check watched products and email new matches
+```
 
 Without `--since`, ingestion is incremental: each agency restarts from its last successful run minus a 30-day overlap.
 
@@ -353,13 +403,13 @@ recall-lens/
 │   ├── perception/        Photo loading, OWLv2 regions, Florence-2 OCR, barcodes, VINs, photo search
 │   ├── agents/            LangGraph state and nodes, rule verifier, Claude arbitration, single-agent baseline
 │   ├── api.py             FastAPI app streaming checks as server-sent events
+│   ├── web/               The web client: one installable page, no build step
+│   ├── watch.py           Watchlist: re-check watched products and email new matches
 │   ├── obs.py             OpenTelemetry tracing of graph steps
 │   └── evals/             Evaluation harnesses, the CI replay gate, load and cost tools
 ├── tests/                 Test suite (real recall records as fixtures)
 └── .github/workflows/     CI and nightly ingestion
 ```
-
-The web client is added in Phase 6; see [ROADMAP.md](ROADMAP.md).
 
 ## Disclaimer
 

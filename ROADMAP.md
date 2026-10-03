@@ -174,16 +174,17 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 - Public URL, demo video and README results table complete.
 - Watchlist alerts delivered by email on new matching recalls.
 
-**Planned commits**
-- [ ] `feat(web): add Next.js PWA shell`
-- [ ] `feat(web): add camera capture and upload`
-- [ ] `feat(web): stream results with citations`
-- [ ] `feat(watchlist): add watchlist schema and API`
-- [ ] `feat(watchlist): parse receipt photos into line items (moved from Phase 3)`
-- [ ] `feat(watchlist): build watchlists from receipt photos`
-- [ ] `feat(watchlist): match new recalls nightly and send email alerts`
-- [ ] `feat(privacy): purge uploaded images after extraction`
-- [ ] `build: containerize the API and deploy to Fly.io`
-- [ ] `build: deploy GPU models on Modal`
+**Commits** (revised during the phase: a static page served by the API replaced the Next.js client, since it needs no build and no second service; receipt parsing and GPU serving were dropped, the first from scope and the second because the budget is $0; uploaded photos have been deleted after each request since Phase 4; the two rule problems Phase 5's holdout named were fixed first, which led to the exact vehicle lookup; the free Hugging Face Docker Space the deployment was planned for now needs a paid plan, so hosting is being decided again)
+- [x] `feat(web): add an installable web client served by the API`
+- [x] `feat(web): check a product from a photo and retake unreadable ones`
+- [x] `fix(extract): stop reading sizes and product names as model numbers`
+- [x] `feat(agents): look up recalls of the named vehicle and model year exactly`
+- [x] `fix(verify): ask which vehicle model only when it could be theirs`
+- [x] `fix(retrieval): search an empty corpus without failing`
+- [x] `test(evals): re-record the replay fixture and raise the gate baseline`
+- [x] `feat(watchlist): email when a recall newly covers a watched product`
+- [x] `feat(web): watch a product from its answer and stop from the email link`
+- [x] `docs: publish Phase 6 vehicle results and document the web client and watchlist`
+- [ ] `build: containerize the app and deploy it`
 - [ ] `docs: finalize README results, architecture and demo`
 - [ ] `docs: add launch write-up`
