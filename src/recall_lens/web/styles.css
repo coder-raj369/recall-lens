@@ -56,7 +56,7 @@ footer { margin-top: 28px; font-size: 0.85rem; }
 
 label { display: block; margin-bottom: 6px; font-weight: 600; }
 
-textarea {
+textarea, input[type="email"] {
   width: 100%;
   padding: 12px;
   border: 1px solid var(--border);
@@ -115,6 +115,9 @@ button:disabled { opacity: 0.6; cursor: progress; }
 #message p { margin: 0 0 8px; overflow-wrap: anywhere; }
 #message blockquote { margin: 0 0 8px; padding-left: 12px; border-left: 3px solid var(--border); color: var(--muted); }
 #message a { color: var(--accent); font-weight: 600; }
-#again { margin-top: 8px; }
+#watch { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.row { display: flex; gap: 8px; }
+#watching:empty { display: none; }
+#again, #stop { margin-top: 8px; }
 
 [hidden] { display: none !important; }

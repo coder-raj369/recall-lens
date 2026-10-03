@@ -43,6 +43,17 @@
     <section id="answer" class="card" aria-live="polite" tabindex="-1" hidden>
       <p id="verdict" class="verdict"></p>
       <div id="message"></div>
+      <form id="watch" hidden>
+        <label for="email">Email me if a recall ever covers this product</label>
+        <div class="row">
+          <input id="email" type="email" required maxlength="254" autocomplete="email"
+                 placeholder="you@example.com">
+          <button type="submit" class="secondary">Watch</button>
+        </div>
+        <p class="hint">We keep your address and what this check read, never the photo, until you stop.</p>
+      </form>
+      <p id="watching" class="hint" role="status"></p>
+      <button id="stop" type="button" class="secondary" hidden>Stop watching</button>
       <button id="again" type="button" class="secondary">Check something else</button>
     </section>
   </main>

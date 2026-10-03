@@ -14,7 +14,7 @@ self.addEventListener("activate", (event) => {
 
 // Network first, so a new version shows at once; the cache answers only when offline.
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
+  if (event.request.method !== "GET" || event.request.url.includes("/watches/")) return;
   event.respondWith(
     fetch(event.request)
       .then((response) => {
