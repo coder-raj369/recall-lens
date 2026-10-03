@@ -77,6 +77,17 @@ def test_an_unreadable_photo_asks_for_another_and_photos_are_not_kept():
     assert len(photos) == 2 and not any(Path(photo).exists() for photo in photos)
 
 
+def test_the_web_client_is_served_beside_the_api():
+    with TestClient(api.create_app(fake_graph([]))) as client:
+        page = client.get("/")
+        assert page.status_code == 200 and 'href="manifest.webmanifest"' in page.text
+        manifest = client.get("/manifest.webmanifest")
+        assert manifest.headers["content-type"].startswith("application/manifest+json")
+        assert manifest.json()["display"] == "standalone"
+        assert "javascript" in client.get("/sw.js").headers["content-type"]
+        assert client.post("/checks/unknown/resume", json={}).status_code == 404  # API routes win
+
+
 def test_bad_requests_are_refused_before_streaming():
     with TestClient(api.create_app(fake_graph([]))) as client:
         assert client.post("/checks/unknown/resume", json={}).status_code == 404

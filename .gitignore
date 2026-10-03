@@ -21,6 +21,7 @@ htmlcov/
 evals/reports/
 
 # OS / editor
+.claude/
 .DS_Store
 .idea/
 .vscode/

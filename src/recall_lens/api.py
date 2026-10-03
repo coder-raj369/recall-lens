@@ -2,6 +2,7 @@
 
     POST /checks                   {"query": "...", "photo": "<base64 image>"}
     POST /checks/{id}/resume       the same fields, answering a paused check's question
+    GET  /                         the web client (recall_lens/web), an installable page
 
 Each response is an event stream: `check` (the check id), one `progress` per graph step, then
 `question` (the check paused, e.g. for a retake), `answer` or `error`. Photos are written to
@@ -24,6 +25,7 @@ from typing import Annotated
 import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
+from fastapi.staticfiles import StaticFiles
 from langgraph.types import Command
 from pydantic import Base64Bytes, BaseModel, Field
 
@@ -32,6 +34,7 @@ from recall_lens.agents import nodes
 from recall_lens.agents.graph import Nodes, build, postgres_checkpointer
 
 log = logging.getLogger(__name__)
+WEB = Path(__file__).parent / "web"
 
 
 class CheckInput(BaseModel):
@@ -158,6 +161,7 @@ def create_app(graph=None) -> FastAPI:
         answer = Command(resume={"photo": photo, "query": body.query})
         yield from _stream(app.state.graph, answer, check_id, photo)
 
+    app.mount("/", StaticFiles(directory=WEB, html=True), name="web")  # after the API routes
     return app
 
 

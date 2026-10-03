@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>RecallLens: has it been recalled?</title>
+  <meta name="description" content="Check a product, food, medicine or vehicle against US recall notices, with the notice cited.">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
+  <meta name="theme-color" content="#0b57d0">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>RecallLens</h1>
+      <p>Has it been recalled? Check a product, food, medicine or vehicle against US recall notices.</p>
+    </header>
+
+    <form id="check" class="card">
+      <label for="query">What do you have?</label>
+      <textarea id="query" name="query" rows="3" maxlength="2000" autocomplete="off"
+                placeholder="CAREone antacid, lot 1276118&#10;or: 2024 Ford Transit"></textarea>
+      <p class="hint">A lot, model or serial number from the label gives the surest answer.</p>
+      <button id="submit" type="submit">Check</button>
+    </form>
+
+    <section id="progress" class="card" aria-live="polite" hidden>
+      <h2>Checking</h2>
+      <ol id="steps"></ol>
+    </section>
+
+    <section id="answer" class="card" aria-live="polite" tabindex="-1" hidden>
+      <p id="verdict" class="verdict"></p>
+      <div id="message"></div>
+      <button id="again" type="button" class="secondary">Check something else</button>
+    </section>
+  </main>
+  <footer>
+    <p>RecallLens is an engineering project, not an official source. Confirm recalls with the agency or the manufacturer.</p>
+  </footer>
+  <script src="app.js" type="module"></script>
+</body>
+</html>
