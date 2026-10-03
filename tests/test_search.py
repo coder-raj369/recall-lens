@@ -94,6 +94,10 @@ def test_lexical_handles_queries_without_terms(conn, corpus):
     assert search.lexical(conn, "it's a \\ o'brien") == []
 
 
+def test_lexical_searches_an_empty_corpus(conn):
+    assert search.lexical(conn, "tower heater") == []  # a deployment before its first ingestion
+
+
 def test_rrf_rewards_agreement_between_rankings():
     assert search.rrf([[1, 2, 3], [3, 1, 4]]) == [1, 3, 2, 4]
     assert search.rrf([[5]], k=0) == [5]

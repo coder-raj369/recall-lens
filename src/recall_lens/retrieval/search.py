@@ -113,7 +113,8 @@ def lexical(
         f"""
         WITH terms AS (
             SELECT DISTINCT u.lexeme, greatest(
-                ln((SELECT count(*) FROM recalls)::float / (1 + coalesce(s.ndoc, 0))), 0
+                ln(greatest((SELECT count(*) FROM recalls), 1)::float  -- no recalls yet: 1
+                   / (1 + coalesce(s.ndoc, 0))), 0
             ) AS idf
             FROM unnest(to_tsvector('english', %(text)s)) u
             LEFT JOIN lexeme_stats s ON s.lexeme = u.lexeme
