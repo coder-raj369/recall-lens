@@ -171,10 +171,12 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 **Goal:** a deployed, usable product and a write-up that explains the engineering.
 
 **Exit criteria**
-- Public URL, demo video and README results table complete.
+- The whole system runs with one command, with a demo recording and the README results complete (revised from a public URL: [ADR-0008](docs/adr/0008-static-client-and-one-command-container.md)).
 - Watchlist alerts delivered by email on new matching recalls.
 
-**Commits** (revised during the phase: a static page served by the API replaced the Next.js client, since it needs no build and no second service; receipt parsing and GPU serving were dropped, the first from scope and the second because the budget is $0; uploaded photos have been deleted after each request since Phase 4; the two rule problems Phase 5's holdout named were fixed first, which led to the exact vehicle lookup; the free Hugging Face Docker Space the deployment was planned for now needs a paid plan, so hosting is being decided again)
+Still open: the container's first build in CI (it was written on a machine without Docker), the demo recording, and a run of the alerts against a real mail server (they are tested with a stand-in and were dry-run on the real corpus).
+
+**Commits** (revised during the phase: a static page served by the API replaced the Next.js client, since it needs no build and no second service; receipt parsing and GPU serving were dropped, the first from scope and the second because the budget is $0; uploaded photos have been deleted after each request since Phase 4; the two rule problems Phase 5's holdout named were fixed first, which led to the exact vehicle lookup; the free Hugging Face Docker Space the deployment was planned for now needs a paid plan, so the app ships as a container that runs anywhere instead of as a hosted service ([ADR-0008](docs/adr/0008-static-client-and-one-command-container.md)))
 - [x] `feat(web): add an installable web client served by the API`
 - [x] `feat(web): check a product from a photo and retake unreadable ones`
 - [x] `fix(extract): stop reading sizes and product names as model numbers`
@@ -185,6 +187,5 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 - [x] `feat(watchlist): email when a recall newly covers a watched product`
 - [x] `feat(web): watch a product from its answer and stop from the email link`
 - [x] `docs: publish Phase 6 vehicle results and document the web client and watchlist`
-- [ ] `build: containerize the app and deploy it`
-- [ ] `docs: finalize README results, architecture and demo`
-- [ ] `docs: add launch write-up`
+- [x] `build: run the app, its database and a first ingestion with docker compose`
+- [x] `docs: record the delivery decision, add the write-up and finish the README`

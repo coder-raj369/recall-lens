@@ -4,9 +4,15 @@
 
 **Point a camera at a product, car, food or medicine and find out whether it has been recalled, with evidence.**
 
+<p align="center">
+  <img src="docs/images/check-covered.jpg" width="260" alt="A lot number the FDA notice lists: the answer says the product is covered, cites the notice and quotes its lot codes">
+  <img src="docs/images/check-not-covered.jpg" width="260" alt="A 2022 Audi Q3: the closest recall covers model years 2023 and 2024, not this one">
+  <img src="docs/images/check-asks.jpg" width="260" alt="A space heater with no brand or code: the answer asks whether the closest recall is the person's product">
+</p>
+
 RecallLens is a multimodal, multi-agent system that identifies a product from a photo or a typed description, extracts the identifiers that actually determine recall status (UPC, model number, lot code, best-by date, VIN), searches recalls from CPSC, FDA and NHTSA, verifies whether *this specific unit* falls inside the recalled range, and explains the hazard and remedy with citations. When it cannot be sure, it says so.
 
-> **Status:** Phases 0–5 complete (foundations; ingestion and corpus; retrieval; perception; multi-agent orchestration; evaluation and LLMOps). Phase 6 (product and launch) is in progress: the web client, exact vehicle lookup and watchlist alerts are built, and deployment is next. See [ROADMAP.md](ROADMAP.md) for the phased delivery plan.
+> **Status:** all six phases are built (foundations; ingestion and corpus; retrieval; perception; multi-agent orchestration; evaluation and LLMOps; product). Three things remain before Phase 6 closes: the container's first build in CI, a demo recording, and a run of the email alerts against a real mail server. There is no hosted deployment ([ADR-0008](docs/adr/0008-static-client-and-one-command-container.md)): the whole system runs with one command. See [ROADMAP.md](ROADMAP.md) for the delivery plan and the [write-up](docs/writeup.md) for what the measurements showed.
 
 ---
 
@@ -81,7 +87,7 @@ Considered and not built: receipt parsing (Document Question Answering), visual 
 | Frontend | A static, installable web page served by the API: no framework and no build step |
 | Evaluation | Custom harnesses per stage; replay gate in CI ([ADR-0007](docs/adr/0007-evaluate-and-observe-without-paid-llm-calls.md)) |
 | Observability | OpenTelemetry spans per graph step, locally or to any OTLP backend such as Langfuse |
-| Delivery | GitHub Actions (tests and evaluation gate) |
+| Delivery | GitHub Actions (tests, evaluation gate, container build); Docker Compose runs the whole system ([ADR-0008](docs/adr/0008-static-client-and-one-command-container.md)) |
 
 ## Evaluation
 
@@ -304,6 +310,8 @@ What the vehicle checks still show:
 
 **Latency** with the lookup in place: 7.4 checks/s alone (0.11 s median, 0.33 s p95), 18.4 at four concurrent (0.21 / 0.32 s) and 20.2 at eight (0.40 / 0.50 s), with no errors. Retrieval takes 0.20 s at the median, up from 0.17 s.
 
+**Cost** of Claude arbitration, were it switched on: 46% of checks would call it (139 of 300, up from 40%), for an estimated $13–40 per 1,000 checks. Vehicle recalls that used to ask a question now leave the vehicle undecided, and undecided candidates are what arbitration is called for.
+
 **Web client.** The API serves an installable page: describe a product or add a photo of its label, watch each step arrive, and read an answer that cites and quotes the notice. A photo is downscaled in the browser, read once and never stored; an unreadable one asks for a retake and resumes the same check.
 
 **Watchlist.** Any answer can be watched. The check's text and codes (never the photo) are kept under an unguessable token; `python -m recall_lens.watch` re-checks every watched product after ingestion and emails each recall that newly covers one, once; the email's link stops the watch. Alerts go by SMTP and only to addresses listed in the configuration, because an open form must not be able to email strangers. The job is tested with a stubbed mail server and was dry-run against the real corpus; it has not yet been run against a real mail server.
@@ -316,13 +324,22 @@ What the vehicle checks still show:
 | Unsafe answers ("not recalled" when it is or may be) | 62% (exact code match, holdout) | 3% (graph, holdout) |
 | Listed vehicles answered "covered" (600 from the corpus) | 98.8% (search alone picks the five recalls) | 100% (exact lookup first) |
 | p95 latency, text check at 8 concurrent | — | 0.50 s |
-| Model cost per check | — | $0 rules only; est. $0.011–0.035 with Claude arbitration |
+| Model cost per check | — | $0 rules only; est. $0.013–0.040 with Claude arbitration |
 
 ## Getting started
 
-**Prerequisites:** Python 3.12, [uv](https://docs.astral.sh/uv/), Docker.
+**Run everything with one command** (needs Docker, with several gigabytes of memory for the models):
 
-No Docker? [pgserver](https://github.com/orm011/pgserver) runs an embedded Postgres 16 with pgvector; keep its data in the git-ignored `.pgdata/` and use the URI it prints as `DATABASE_URL` in place of `docker compose up`:
+```bash
+git clone https://github.com/coder-raj369/recall-lens.git && cd recall-lens
+docker compose up --build        # database, app, and the last 30 days of recalls
+```
+
+Then open http://localhost:8000. The first start downloads about 3 GB of model weights and ingests recent recalls from the three agencies (`SEED_DAYS=90 docker compose up` for more); a photo check downloads 2.2 GB more on first use. Checks answer from whatever has been ingested so far. A [workflow](.github/workflows/container.yml) builds the image, starts it with its database and runs a check to an answer on every change to it; how long a first start takes on a laptop has not been measured.
+
+**For development:** Python 3.12, [uv](https://docs.astral.sh/uv/), and Docker for the database (`docker compose up -d postgres`).
+
+No Docker? [pgserver](https://github.com/orm011/pgserver) runs an embedded Postgres 16 with pgvector; keep its data in the git-ignored `.pgdata/` and use the URI it prints as `DATABASE_URL` in place of the `docker compose` line:
 
 ```bash
 uv run --with pgserver python -c "import pgserver; print(pgserver.get_server('.pgdata', cleanup_mode=None).get_uri())"
@@ -332,7 +349,7 @@ uv run --with pgserver python -c "import pgserver; print(pgserver.get_server('.p
 git clone https://github.com/coder-raj369/recall-lens.git
 cd recall-lens
 cp .env.example .env
-docker compose up -d                          # Postgres 16 + pgvector
+docker compose up -d postgres                 # Postgres 16 + pgvector
 uv sync                                       # install dependencies from uv.lock
 export $(grep -v '^#' .env | xargs)
 uv run python -m recall_lens.db.migrate       # apply schema migrations
@@ -393,6 +410,7 @@ Without `--since`, ingestion is incremental: each agency restarts from its last 
 ```
 recall-lens/
 ├── docs/adr/              Architecture decision records
+├── docs/writeup.md        What building and measuring the system showed
 ├── evals/datasets/        Labeled evaluation sets and labeling guidelines
 ├── evals/fixtures/        Recorded end-to-end candidates and the gate's baseline
 ├── src/recall_lens/
@@ -408,7 +426,8 @@ recall-lens/
 │   ├── obs.py             OpenTelemetry tracing of graph steps
 │   └── evals/             Evaluation harnesses, the CI replay gate, load and cost tools
 ├── tests/                 Test suite (real recall records as fixtures)
-└── .github/workflows/     CI and nightly ingestion
+├── Dockerfile             The app image; docker-compose.yml runs it with its database
+└── .github/workflows/     CI, container build and nightly ingestion
 ```
 
 ## Disclaimer
