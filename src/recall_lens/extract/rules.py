@@ -47,6 +47,7 @@ _NDC = re.compile(r"(?<![\w-])\d{4,5}-\d{3,4}-\d{1,2}(?![\w-])")
 # ponytail: bare years count as dates, so a lot literally numbered "2019" is missed.
 _DATE_LIKE = re.compile(r"^\d{1,2}[/.-]\d{1,2}(?:[/.-]\d{2,4})?$|^\d{1,2}/\d{4}$|^(?:19|20)\d{2}$")
 _LIST_MARKER = re.compile(r"\d{1,3}\)")  # "14) ..." enumerations in FDA kit listings
+_N_IN_N = re.compile(r"^\d{1,2}-IN-\d{1,2}$", re.I)  # "models of 5-in-1 high chairs" names no model
 
 
 def _codes_after(text: str, start: int) -> list[str]:
@@ -63,7 +64,7 @@ def _codes_after(text: str, start: int) -> list[str]:
         if not token or _LIST_MARKER.match(text, pos):
             break
         value = token.group()
-        if not any(c.isdigit() for c in value) or _DATE_LIKE.match(value):
+        if not any(c.isdigit() for c in value) or _DATE_LIKE.match(value) or _N_IN_N.match(value):
             break
         if (bounds := _NUMERIC_RANGE.match(value)) and len(bounds[1]) == len(bounds[2]):
             codes.extend(bounds.groups())  # "335314-335315" is a range, not one code
@@ -91,6 +92,8 @@ def extract(text: str | None) -> set[Identifier]:
         values = (
             _upcs_after(text, label.end()) if kind == "upc" else _codes_after(text, label.end())
         )
+        if kind == "model":
+            values = [v for v in values if len(v) > 1]  # "Tesla Model 3" gives no model number
         found[kind].extend(values)
     found["ndc"] = _NDC.findall(text)
     return {
@@ -104,9 +107,12 @@ def extract(text: str | None) -> set[Identifier]:
 MIN_BARE_CODE = 5  # unlabeled tokens shorter than this ("F1", "4x4") are too ambiguous
 _TOKEN = re.compile(r"[A-Z0-9][A-Z0-9+\-./_]*[A-Z0-9]", re.IGNORECASE)
 _YEAR = re.compile(r"^(?:19|20)\d{2}$")
-# Phone numbers, ZIP+4 codes and address ordinals look like codes on labels and packaging.
+# Phone numbers, ZIP+4 codes and address ordinals look like codes on labels and packaging, and so
+# do sizes and counts: "5-in-1", "2-cup", "12-drawer", "24-count".
 _NOT_A_CODE = re.compile(
-    r"^(?:\d{3}-\d{4}|\d{3}-\d{3}-\d{4}|\d{5}-\d{4}|\d+(?:ST|ND|RD|TH))$", re.I
+    r"^(?:\d{3}-\d{4}|\d{3}-\d{3}-\d{4}|\d{5}-\d{4}|\d+(?:ST|ND|RD|TH)"
+    r"|\d{1,2}-[A-Z]+(?:-\d{1,2})?)$",
+    re.I,
 )
 
 

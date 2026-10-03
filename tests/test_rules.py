@@ -108,3 +108,12 @@ def test_codes_take_labeled_and_bare_codes_but_skip_years_and_short_tokens():
     assert codes("upc 0 12345 67890 5") == {"012345678905"}
     assert codes("F1 4x4 truck") == set()
     assert codes("Tel +1 (818) 818-0538, Seatac WA 98188-9993, 3715 S 182ND St") == set()
+
+
+def test_sizes_and_counts_are_not_codes():
+    assert codes("Harppa 5-in-1 convertible high chair, model BHC001") == {"BHC001"}
+    assert codes("Pyrex 2-cup measuring cup, 12-drawer dresser, 24-count pack") == set()
+    assert codes("Honda 1500-HD and Vornado SH-100") == {"1500-HD", "SH-100"}
+    assert extract("models of 5-in-1 high chairs") == set()
+    assert extract("Is my 2022 Tesla Model 3 recalled?") == set()  # a name, not a model number
+    assert extract("lot 24-A") == {("lot", "24-A")}  # a label still makes a short dashed code
