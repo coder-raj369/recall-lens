@@ -1,19 +1,19 @@
 {
   "dev": {
     "cases": 48,
-    "right": 44,
+    "right": 46,
     "missed": 0,
     "unsafe": 0
   },
   "test": {
     "cases": 102,
-    "right": 95,
+    "right": 98,
     "missed": 1,
     "unsafe": 1
   },
   "holdout": {
     "cases": 150,
-    "right": 128,
+    "right": 139,
     "missed": 2,
     "unsafe": 3
   }
