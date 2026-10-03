@@ -25,6 +25,13 @@
       <textarea id="query" name="query" rows="3" maxlength="2000" autocomplete="off"
                 placeholder="CAREone antacid, lot 1276118&#10;or: 2024 Ford Transit"></textarea>
       <p class="hint">A lot, model or serial number from the label gives the surest answer.</p>
+      <input id="photo" type="file" accept="image/*" class="visually-hidden">
+      <label for="photo" class="button secondary">Add a photo of the label</label>
+      <figure id="preview" hidden>
+        <img id="thumb" alt="The photo you added">
+        <button id="clear" type="button" class="secondary">Remove photo</button>
+      </figure>
+      <p id="notice" class="hint" role="status"></p>
       <button id="submit" type="submit">Check</button>
     </form>
 

@@ -69,12 +69,11 @@ ASK = (
     "Retake it closer to the label, with any lot, model or date code in focus, "
     "or describe the product."
 )
-RETAKE = f"We could not read the photo. {ASK}"
 
 
 def retake(state: CheckState) -> dict:
     """Wait for a new photo or a description; resume with {"photo": ...} or {"query": ...}."""
-    reply = interrupt({"question": RETAKE, "reason": state["photo_error"]}) or {}
+    reply = interrupt({"question": ASK, "reason": state["photo_error"]}) or {}
     query = " ".join(filter(None, [state.get("query"), reply.get("query")]))
     return {"photo": reply.get("photo"), "query": query}
 

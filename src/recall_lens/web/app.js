@@ -11,6 +11,9 @@ const STEPS = {
 };
 
 const $ = (id) => document.getElementById(id);
+const MAX_SIDE = 2048; // the server reads photos at this size; larger only slows the upload
+let photo = null; // base64 JPEG of the chosen photo
+let paused = null; // id of a check waiting for a clearer photo or a description
 
 // Server-sent events of a fetch response, as {event, data}; keep-alive comments are skipped.
 async function* events(response) {
@@ -64,6 +67,25 @@ function showAnswer(verdict, message) {
   $("answer").focus();
 }
 
+// The photo as a JPEG data URL, upright and at most MAX_SIDE on its longer side.
+async function shrink(file) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+  const canvas = Object.assign(document.createElement("canvas"), {
+    width: Math.round(bitmap.width * scale),
+    height: Math.round(bitmap.height * scale),
+  });
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.9);
+}
+
+function setPhoto(dataUrl) {
+  photo = dataUrl ? dataUrl.split(",")[1] : null;
+  $("thumb").src = dataUrl ?? "";
+  $("preview").hidden = !dataUrl;
+  $("photo").value = "";
+}
+
 async function run(url, body) {
   $("submit").disabled = true;
   $("steps").replaceChildren();
@@ -76,11 +98,19 @@ async function run(url, body) {
       body: JSON.stringify(body),
     });
     if (!response.ok) throw new Error(`The server answered ${response.status}.`);
+    let check = paused;
+    paused = null;
     for await (const { event, data } of events(response)) {
+      if (event === "check") check = data.id;
       if (event === "progress") addStep(data.node, data.update);
       if (event === "answer") showAnswer(data.verdict, data.message);
       if (event === "error") throw new Error(data.message);
+      if (event === "question") {
+        paused = check; // the next photo or description resumes this check
+        showAnswer("needs_info", `${data.reason}\n${data.question}`);
+      }
     }
+    $("submit").textContent = paused ? "Try again" : "Check";
   } catch (error) {
     showAnswer("error", `The check did not finish.\n${error.message}`);
   } finally {
@@ -88,16 +118,39 @@ async function run(url, body) {
   }
 }
 
-$("check").addEventListener("submit", (event) => {
+$("photo").addEventListener("change", async () => {
+  const [file] = $("photo").files;
+  if (!file) return;
+  try {
+    setPhoto(await shrink(file));
+    $("notice").textContent = "";
+  } catch {
+    setPhoto(null);
+    $("notice").textContent = "That file could not be read as a photo. Try a JPEG or PNG.";
+  }
+});
+
+$("clear").addEventListener("click", () => setPhoto(null));
+
+$("check").addEventListener("submit", async (event) => {
   event.preventDefault();
   const query = $("query").value.trim();
-  if (!query) return $("query").focus();
-  run("checks", { query });
+  if (!query && !photo) {
+    $("notice").textContent = "Describe the product or add a photo of its label.";
+    return $("query").focus();
+  }
+  $("notice").textContent = "";
+  await run(paused ? `checks/${paused}/resume` : "checks", { query, photo });
+  setPhoto(null); // sent once; the server keeps no copy either
+  if (paused) $("query").value = ""; // what comes next is added to the description
 });
 
 $("again").addEventListener("click", () => {
   $("answer").hidden = $("progress").hidden = true;
+  paused = null;
+  $("submit").textContent = "Check";
   $("query").value = "";
+  setPhoto(null);
   $("query").focus();
 });
 

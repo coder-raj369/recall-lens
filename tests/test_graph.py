@@ -82,7 +82,7 @@ def test_unreadable_photo_pauses_for_a_retake_and_resumes_with_the_new_photo():
     config = {"configurable": {"thread_id": "t"}}
     paused = graph.invoke({"query": "", "photo": "blurry.jpg"}, config)
     (question,) = paused["__interrupt__"]
-    assert question.value == {"question": agent_nodes.RETAKE,
+    assert question.value == {"question": agent_nodes.ASK,
                               "reason": "No text could be read from the photo."}  # fmt: skip
     assert visited == ["perceive"] and "answer" not in paused
     result = graph.invoke(Command(resume={"photo": "sharp.jpg"}), config)
