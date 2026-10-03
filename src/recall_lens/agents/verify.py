@@ -321,6 +321,12 @@ def _vehicle_matches(scope: Scope, facts: Facts) -> list[Vehicle]:
     return matches
 
 
+def _head(model: str) -> str | None:
+    """The name a model's variants share: "SILVERADO" of "SILVERADO 2500"; none for "F-150"."""
+    m = re.match(r"[A-Z]{4,}(?![A-Z0-9])", model.upper())
+    return m and m.group()
+
+
 def named_models(scopes: Iterable[Scope], facts: Facts) -> frozenset[str]:
     """The models the person named among those the recalls list, without spaces or hyphens.
 
@@ -384,7 +390,8 @@ def verify(scope: Scope, facts: Facts, named=frozenset()) -> tuple[str, str, str
     """Return (verdict, reason, evidence quoted from the notice).
 
     `named` is `named_models` over all the recalls being compared: knowing which listed model
-    the person meant, a recall of another model does not claim the vehicle.
+    the person meant, a recall of another model neither claims the vehicle nor asks about it.
+    A recall of a name inside the one they gave ("Cherokee" in "Grand Cherokee") asks.
     """
     listed = {kind: {_key(v) for v in scope.codes.get(kind, ())} for kind in CODE_KINDS}
     typed = {_key(c) for values in facts.typed.values() for c in values}
@@ -441,17 +448,33 @@ def verify(scope: Scope, facts: Facts, named=frozenset()) -> tuple[str, str, str
 
     # 2. Vehicles: the recall names affected models and model years.
     if vehicle_years:
-        matched = _vehicle_matches(scope, facts)
-        if named:
-            matched = [v for v in matched if _compact(v.model) in named]
+        mentioned = _vehicle_matches(scope, facts)
+        matched = [v for v in mentioned if _compact(v.model) in named] if named else mentioned
+        years = {int(y) for y in _YEAR.findall(facts.text)}
         if not matched:
-            makes = {v.make for v in scope.vehicles}
-            if any(_plain(make) in _plain(facts.text) for make in makes):
-                models = ", ".join(sorted({v.model.title() for v in scope.vehicles})[:5])
+            # Which listed models could still be theirs? Those of the make they named, or
+            # sharing a name with their words ("Chevy Silverado" may be a SILVERADO 2500); of
+            # their model year when they gave one; and, when they named a model that some
+            # recall lists, only versions of it ("740I XDRIVE" for "740I") and names inside
+            # it, which may or may not be the same vehicle ("CRANE" for "AC Series Crane").
+            text = _plain(facts.text)
+            words = set(text.split())
+            possible = {
+                v.model
+                for v in scope.vehicles
+                if (_plain(v.make) in text or _head(v.model) in words)
+                and (not years or v.years is None or years & v.years)
+                and (
+                    not named
+                    or v in mentioned
+                    or any(_compact(v.model).startswith(n) for n in named)
+                )
+            }
+            if possible:
+                models = ", ".join(sorted(m.title() for m in possible)[:5])
                 return NEEDS_INFO, f"This recall covers {models}; which model is yours?", None
             return UNDETERMINED, "Your vehicle does not appear in this recall's list.", None
         model = matched[0].model.title()
-        years = {int(y) for y in _YEAR.findall(facts.text)}
         if any(v.years is None for v in matched):
             return AFFECTED, f"This recall covers every {model}.", None
         if not years:

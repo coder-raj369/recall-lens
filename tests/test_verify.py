@@ -127,7 +127,11 @@ F150 = parse_scope(
     "Ford Motor Company recall: Electrical System",
     "Ford is recalling certain 2021 F-150 vehicles.",
     [("brand", "FORD")],
-    affected=["FORD F-150 (2021)", "FORD redundant FIESTA ST (2021)"],
+    affected=[
+        "FORD F-150 (2021)",
+        "FORD redundant FIESTA ST (2021)",
+        "CHEVROLET SILVERADO 2500 (2021)",
+    ],
 )
 FILTERS = parse_scope("Britax Recalls Car Seats", "Britax car seat recall.", [("brand", "BRITAX")])
 KITS_LIST = parse_scope(
@@ -168,7 +172,8 @@ PUMP_UNIT = parse_scope(
         (TRANSIT, "2024 Ford Transit", AFFECTED),
         (TRANSIT, "2022 Ford Transit", NOT_AFFECTED),
         (TRANSIT, "my Ford Transit", NEEDS_INFO),
-        (TRANSIT, "2021 Ford Escape", NEEDS_INFO),
+        (TRANSIT, "2024 Ford Escape", NEEDS_INFO),  # a 2024 Ford is covered: which model?
+        (TRANSIT, "2021 Ford Escape", UNDETERMINED),  # no 2021 Ford is, whatever the model
         (TRANSIT, "2021 Honda Civic", UNDETERMINED),
         # Equipment part numbers cover every unit of that part.
         (PEDALS, "Mopar brake pedal 68607178AA", AFFECTED),
@@ -200,6 +205,9 @@ PUMP_UNIT = parse_scope(
         (F150, "Is my 2021 Ford F150 recalled?", AFFECTED),  # hyphens and spaces do not matter
         (F150, "2019 Ford F 150", NOT_AFFECTED),
         (F150, "2021 Ford Fiesta ST", AFFECTED),  # listed as "redundant FIESTA ST"
+        # A nickname hides the make, but the model's name is there: ask, do not say "no match".
+        (F150, "Is my 2021 Chevy Silverado recalled?", NEEDS_INFO),
+        (F150, "Is my 2019 Chevy Silverado recalled?", UNDETERMINED),
         (FILTERS, "Brita water filter pitcher", UNDETERMINED),  # short words need an exact match
         # A brand's other products do not answer for yours; "is" is not a product word.
         (MADELEINES, "Kirkland Signature smoked salmon 12 oz, lot 8512801275", UNDETERMINED),

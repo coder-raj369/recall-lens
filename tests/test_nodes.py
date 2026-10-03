@@ -209,7 +209,7 @@ def vehicle_verdicts(query, *lists):
 
 
 def test_judge_takes_the_longest_vehicle_model_the_person_named():
-    # "Grand Cherokee" names no Cherokee, so a Cherokee recall does not claim it.
+    # "Grand Cherokee" names no Cherokee: a Cherokee recall asks instead of claiming it.
     cherokee, grand = ["JEEP CHEROKEE (2020)"], ["JEEP GRAND CHEROKEE (2021)"]
     assert vehicle_verdicts("2020 Jeep Grand Cherokee", cherokee) == [AFFECTED]  # all it knows
     assert vehicle_verdicts("2020 Jeep Grand Cherokee", cherokee, grand) == [
@@ -219,6 +219,15 @@ def test_judge_takes_the_longest_vehicle_model_the_person_named():
     # A longer name that only spells out the make is the same model.
     promaster, upfitted = ["RAM PROMASTER (2022)"], ["BRAUN RAM PROMASTER (2022)"]
     assert vehicle_verdicts("2022 Ram ProMaster", promaster, upfitted) == [AFFECTED, AFFECTED]
+
+
+def test_judge_asks_which_model_only_when_it_could_be_theirs():
+    q3_other_years, q5 = ["AUDI Q3 (2019, 2020)"], ["AUDI Q5 (2022)", "AUDI Q5 SPORTBACK (2022)"]
+    assert vehicle_verdicts("2022 Audi Q3", q5) == [NEEDS_INFO]  # alone, the Q5 recall asks
+    assert vehicle_verdicts("2022 Audi Q3", q5, q3_other_years) == [UNDETERMINED, NOT_AFFECTED]
+    # A listed model that may be a version of the named one is still worth asking about.
+    sportback = ["AUDI Q3 SPORTBACK (2022)"]
+    assert vehicle_verdicts("2022 Audi Q3", sportback, q3_other_years)[0] == NEEDS_INFO
 
 
 def candidate(i, recall_id=None):
