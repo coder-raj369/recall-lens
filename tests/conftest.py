@@ -31,5 +31,5 @@ def conn(database_url):
     with psycopg.connect(database_url) as connection:
         yield connection
         connection.rollback()
-        connection.execute("TRUNCATE recalls, ingestion_runs RESTART IDENTITY CASCADE")
+        connection.execute("TRUNCATE recalls, ingestion_runs, watch_items RESTART IDENTITY CASCADE")
         connection.commit()

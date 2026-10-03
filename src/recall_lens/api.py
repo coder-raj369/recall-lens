@@ -2,6 +2,8 @@
 
     POST /checks                   {"query": "...", "photo": "<base64 image>"}
     POST /checks/{id}/resume       the same fields, answering a paused check's question
+    POST /checks/{id}/watch        {"email": "..."}: email when a recall covers this product
+    GET, DELETE /watches/{token}   show or remove a watched product (recall_lens.watch)
     GET  /                         the web client (recall_lens/web), an installable page
 
 Each response is an event stream: `check` (the check id), one `progress` per graph step, then
@@ -29,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from langgraph.types import Command
 from pydantic import Base64Bytes, BaseModel, Field
 
-from recall_lens import obs
+from recall_lens import obs, watch
 from recall_lens.agents import nodes
 from recall_lens.agents.graph import Nodes, build, postgres_checkpointer
 
@@ -40,6 +42,10 @@ WEB = Path(__file__).parent / "web"
 class CheckInput(BaseModel):
     query: str = Field("", max_length=2_000)
     photo: Annotated[Base64Bytes, Field(max_length=10_000_000)] | None = None
+
+
+class WatchInput(BaseModel):
+    email: str = Field(max_length=254)
 
 
 def arbitrator(services: nodes.Services):
@@ -74,8 +80,9 @@ class ThreadConnections:
             conn.close()
 
 
-def default_graph(stack: ExitStack):
-    """The production graph on DATABASE_URL, with checkpoints so paused checks can resume."""
+def default_graph(stack: ExitStack) -> tuple:
+    """The production graph on DATABASE_URL, with checkpoints so paused checks can resume,
+    and the database connections it runs on."""
     url = os.environ["DATABASE_URL"]
     obs.setup()
     connections = ThreadConnections(url)
@@ -90,7 +97,8 @@ def default_graph(stack: ExitStack):
         arbitrate=arbitrator(services),
         retake=nodes.retake,
     )
-    return build(graph_nodes, checkpointer=stack.enter_context(postgres_checkpointer(url)))
+    graph = build(graph_nodes, checkpointer=stack.enter_context(postgres_checkpointer(url)))
+    return graph, connections
 
 
 def _config(check_id: str) -> dict:
@@ -136,13 +144,14 @@ def paused_check(check_id: str, request: Request) -> str:
     return check_id
 
 
-def create_app(graph=None) -> FastAPI:
-    """The API around `graph`, or around the production graph when none is given."""
+def create_app(graph=None, db=None) -> FastAPI:
+    """The API around `graph` and the database `db`, or around the production ones when no
+    graph is given."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         with ExitStack() as stack:
-            app.state.graph = graph if graph is not None else default_graph(stack)
+            app.state.graph, app.state.db = (graph, db) if graph else default_graph(stack)
             yield
 
     app = FastAPI(title="RecallLens", lifespan=lifespan)
@@ -160,6 +169,33 @@ def create_app(graph=None) -> FastAPI:
         photo = _save(body.photo)
         answer = Command(resume={"photo": photo, "query": body.query})
         yield from _stream(app.state.graph, answer, check_id, photo)
+
+    @app.post("/checks/{check_id}/watch", status_code=201)
+    def watch_product(check_id: str, body: WatchInput) -> dict:
+        state = app.state.graph.get_state(_config(check_id)).values
+        if "answer" not in state:
+            raise HTTPException(404, "No finished check with this id.")
+        if not (state.get("search_text") or state.get("codes")):
+            raise HTTPException(409, "This check read nothing that could be watched.")
+        email = body.email.strip().lower()
+        if email not in watch.recipients():
+            raise HTTPException(403, "In this demo, alerts go only to approved addresses.")
+        token = watch.add(app.state.db, state, email)
+        if token is None:
+            raise HTTPException(429, "This address already watches as many products as it may.")
+        return {"token": token}
+
+    @app.get("/watches/{token}")
+    def watched(token: str) -> dict:
+        product = watch.product(app.state.db, token)
+        if product is None:
+            raise HTTPException(404, "Nothing is watched under this link.")
+        return {"product": product}
+
+    @app.delete("/watches/{token}", status_code=204)
+    def stop_watching(token: str) -> None:
+        if not watch.remove(app.state.db, token):
+            raise HTTPException(404, "Nothing is watched under this link.")
 
     app.mount("/", StaticFiles(directory=WEB, html=True), name="web")  # after the API routes
     return app
