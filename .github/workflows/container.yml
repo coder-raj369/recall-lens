@@ -1,0 +1,49 @@
+name: Container
+
+# Builds the image and runs the app with its database, as `docker compose up` does, whenever
+# what goes into the image changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker-compose.yml
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/container.yml
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker-compose.yml
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/container.yml
+
+concurrency:
+  group: container-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image and start the app with its database
+        run: docker compose up --build --detach --wait postgres app
+      - name: The web client and the API answer
+        run: |
+          curl --fail --silent --show-error http://localhost:8000/ | grep --quiet RecallLens
+          status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:8000/watches/none)
+          test "$status" = 404  # asked the database: no such watched product
+      - name: A check runs to an answer (downloads the embedding model)
+        run: |
+          curl --fail --silent --show-error --no-buffer --max-time 900 http://localhost:8000/checks \
+            --header 'content-type: application/json' --data '{"query": "tower heater model SRTH-1"}' \
+            | tee check.txt
+          grep --quiet '^event: answer' check.txt
+      - name: Logs
+        if: always()
+        run: docker compose logs --tail 200

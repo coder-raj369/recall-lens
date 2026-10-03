@@ -1,3 +1,18 @@
+# `docker compose up --build` runs everything: Postgres with pgvector, the app on
+# http://localhost:8000, and a one-off job that ingests the last SEED_DAYS days of recalls.
+# `docker compose up -d postgres` runs the database alone, for development on the host.
+
+x-app: &app
+  build: .
+  image: recall-lens
+  environment:
+    DATABASE_URL: postgresql://recall:recall@postgres:5432/recall_lens
+  env_file:
+    - path: .env # optional: alert recipients, SMTP settings, tracing (see .env.example)
+      required: false
+  volumes:
+    - models:/models # downloaded model weights, kept between runs
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -15,5 +30,27 @@ services:
       timeout: 5s
       retries: 10
 
+  app:
+    <<: *app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  # Fills a new database, and tops it up on later starts: syncing is idempotent.
+  seed:
+    <<: *app
+    depends_on:
+      app:
+        condition: service_healthy # the app applies the schema migrations when it starts
+    command:
+      - sh
+      - -c
+      - python -m recall_lens.ingest --since "$$(date -d '${SEED_DAYS:-30} days ago' +%F)"
+    healthcheck:
+      disable: true # the image's check is for the web app
+
 volumes:
   pgdata:
+  models:

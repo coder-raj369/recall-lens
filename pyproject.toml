@@ -32,7 +32,17 @@ ml = [
     "sentence-transformers>=3.0",
     "pillow>=11",
     "zxing-cpp>=2.3",
+    "torch>=2.4",  # named so the Linux wheels can come from the CPU-only index below
 ]
+
+# On Linux, PyPI's torch brings several gigabytes of CUDA libraries the container never uses.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [build-system]
 requires = ["hatchling"]
