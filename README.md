@@ -12,7 +12,7 @@
 
 RecallLens is a multimodal, multi-agent system that identifies a product from a photo or a typed description, extracts the identifiers that actually determine recall status (UPC, model number, lot code, best-by date, VIN), searches recalls from CPSC, FDA and NHTSA, verifies whether *this specific unit* falls inside the recalled range, and explains the hazard and remedy with citations. When it cannot be sure, it says so.
 
-> **Status:** all six phases are built (foundations; ingestion and corpus; retrieval; perception; multi-agent orchestration; evaluation and LLMOps; product). Three things remain before Phase 6 closes: the container's first build in CI, a demo recording, and a run of the email alerts against a real mail server. There is no hosted deployment ([ADR-0008](docs/adr/0008-static-client-and-one-command-container.md)): the whole system runs with one command. See [ROADMAP.md](ROADMAP.md) for the delivery plan and the [write-up](docs/writeup.md) for what the measurements showed.
+> **Status:** all six phases are built (foundations; ingestion and corpus; retrieval; perception; multi-agent orchestration; evaluation and LLMOps; product). Two things remain before Phase 6 closes: a demo recording, and a run of the email alerts against a real mail server. There is no hosted deployment ([ADR-0008](docs/adr/0008-static-client-and-one-command-container.md)): the whole system runs with one command. See [ROADMAP.md](ROADMAP.md) for the delivery plan and the [write-up](docs/writeup.md) for what the measurements showed.
 
 ---
 
@@ -335,7 +335,7 @@ git clone https://github.com/coder-raj369/recall-lens.git && cd recall-lens
 docker compose up --build        # database, app, and the last 30 days of recalls
 ```
 
-Then open http://localhost:8000. The first start downloads about 3 GB of model weights and ingests recent recalls from the three agencies (`SEED_DAYS=90 docker compose up` for more); a photo check downloads 2.2 GB more on first use. Checks answer from whatever has been ingested so far. A [workflow](.github/workflows/container.yml) builds the image, starts it with its database and runs a check to an answer on every change to it; how long a first start takes on a laptop has not been measured.
+Then open http://localhost:8000. The first start downloads about 3 GB of model weights and ingests recent recalls from the three agencies (`SEED_DAYS=90 docker compose up` for more); a photo check downloads 2.2 GB more on first use. Checks answer from whatever has been ingested so far. A [workflow](.github/workflows/container.yml) builds the image, starts it with its database and runs a check to an answer on every change to it: on a GitHub runner the build and start take about a minute, and the first check, which downloads the embedding model, 25 s. How long a first start with its ingestion takes on a laptop has not been measured.
 
 **For development:** Python 3.12, [uv](https://docs.astral.sh/uv/), and Docker for the database (`docker compose up -d postgres`).
 

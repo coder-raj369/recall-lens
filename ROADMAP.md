@@ -174,7 +174,7 @@ Progress is tracked with one GitHub milestone and one tracking issue per phase.
 - The whole system runs with one command, with a demo recording and the README results complete (revised from a public URL: [ADR-0008](docs/adr/0008-static-client-and-one-command-container.md)).
 - Watchlist alerts delivered by email on new matching recalls.
 
-Still open: the container's first build in CI (it was written on a machine without Docker), the demo recording, and a run of the alerts against a real mail server (they are tested with a stand-in and were dry-run on the real corpus).
+Still open: the demo recording, and a run of the alerts against a real mail server (they are tested with a stand-in and were dry-run on the real corpus). The container was written on a machine without Docker; CI built it, started it and ran a check to an answer on its first run.
 
 **Commits** (revised during the phase: a static page served by the API replaced the Next.js client, since it needs no build and no second service; receipt parsing and GPU serving were dropped, the first from scope and the second because the budget is $0; uploaded photos have been deleted after each request since Phase 4; the two rule problems Phase 5's holdout named were fixed first, which led to the exact vehicle lookup; the free Hugging Face Docker Space the deployment was planned for now needs a paid plan, so the app ships as a container that runs anywhere instead of as a hosted service ([ADR-0008](docs/adr/0008-static-client-and-one-command-container.md)))
 - [x] `feat(web): add an installable web client served by the API`
